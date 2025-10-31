@@ -28,6 +28,7 @@
 补充如何完整运行你的应用。
 
 1. 在本地启动ganache应用。
+设置端口为8545
 
 2. 在 `./contracts` 中安装需要的依赖，运行如下的命令：
     ```bash
@@ -37,7 +38,10 @@
     ```bash
     npx hardhat compile
     ```
-4. ...
+4. 在 `./contracts` 中部署合约，运行如下的命令：
+    ```bash
+    npx hardhat run scripts/deploy.ts --network ganache
+    ```
 5. ...
 6. 在 `./frontend` 中安装需要的依赖，运行如下的命令：
     ```bash
