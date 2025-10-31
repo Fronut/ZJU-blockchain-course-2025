@@ -1,15 +1,18 @@
 import { ethers } from "hardhat";
 
 async function main() {
-  const EasyBet = await ethers.getContractFactory("EasyBet");
-  const easyBet = await EasyBet.deploy();
-  await easyBet.deployed();
+  const DecentralizedLottery = await ethers.getContractFactory("DecentralizedLottery");
+  const decentralizedLottery = await DecentralizedLottery.deploy();
+  await decentralizedLottery.deployed();
 
-  console.log(`EasyBet deployed to ${easyBet.address}`);
+  console.log(`DecentralizedLottery deployed to ${decentralizedLottery.address}`);
+
+  // 获取子合约地址
+  const [pointsAddress, tokenAddress] = await decentralizedLottery.getContractAddresses();
+  console.log(`LotteryPoints deployed to: ${pointsAddress}`);
+  console.log(`LotteryToken deployed to: ${tokenAddress}`);
 }
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
