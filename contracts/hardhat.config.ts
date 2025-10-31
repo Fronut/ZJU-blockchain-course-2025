@@ -2,7 +2,16 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.20",
+  solidity: {
+    version: "0.8.20",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,  // 优化运行次数，值越小字节码越小
+      },
+      // viaIR: true, // 如果需要进一步优化，可以取消注释这行
+    },
+  },
   networks: {
     ganache: {
       // rpc url, change it according to your ganache configuration
