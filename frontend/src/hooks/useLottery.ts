@@ -1,25 +1,48 @@
 // src/hooks/useLottery.ts
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ethers } from 'ethers';
 import { Lottery, Ticket, Listing, OrderBookLevel } from '../types';
 import { CONTRACT_ADDRESSES } from '../utils/constants';
 import { useWeb3 } from './useWeb3';
 
-// 这里需要导入实际的 ABI，暂时用空对象代替
+// 完整的 Lottery 合约 ABI
 const LOTTERY_ABI = [
+  // 视图函数
   "function getAllLotteries() view returns (tuple(uint256 id, string name, string description, string[] options, uint256 totalPool, uint256 endTime, uint8 status, uint256 winningOption, uint256 ticketPrice, uint256[] optionCounts, uint256[] optionAmounts)[])",
   "function getUserTickets(address user) view returns (tuple(uint256 tokenId, uint256 lotteryId, string lotteryName, uint256 optionId, string optionName, uint256 amount, uint256 purchaseTime, uint8 status)[])",
   "function getActiveListings() view returns (tuple(uint256 listingId, uint256 tokenId, uint256 lotteryId, string lotteryName, uint256 optionId, string optionName, address seller, uint256 price, uint256 ticketAmount, uint256 listingTime, uint8 status)[])",
   "function getOrderBook(uint256 lotteryId, uint256 optionId) view returns (uint256[] prices, uint256[] quantities)",
+  "function getContractAddresses() view returns (address points, address token)",
+  "function claimPoints()",
+  
+  // 交易函数
   "function createLottery(string name, string description, string[] options, uint256 ticketPrice, uint256 durationInDays)",
   "function purchaseTicket(uint256 lotteryId, uint256 optionId)",
   "function listTicket(uint256 tokenId, uint256 price)",
   "function cancelListing(uint256 listingId)",
   "function buyListing(uint256 listingId)",
   "function buyAtBestPrice(uint256 lotteryId, uint256 optionId)",
-  "function claimPoints()",  // 确保包含这个方法
-  "function getContractAddresses() view returns (address points, address token)"
+  "function endLottery(uint256 lotteryId, uint256 winningOption)",
+  "function settleLottery(uint256 lotteryId)",
+  "function refundLottery(uint256 lotteryId)"
 ];
+
+// 防抖 Hook
+const useDebounce = (value: any, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
 
 export const useLottery = () => {
   const { signer, account, isConnected } = useWeb3();
@@ -27,16 +50,50 @@ export const useLottery = () => {
   const [myTickets, setMyTickets] = useState<Ticket[]>([]);
   const [activeListings, setActiveListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
 
-  const lotteryContract = signer ? new ethers.Contract(CONTRACT_ADDRESSES.lottery, LOTTERY_ABI, signer) : null;
+  // 使用防抖避免频繁更新
+  const debouncedIsConnected = useDebounce(isConnected, 300);
+  const debouncedAccount = useDebounce(account, 300);
 
+  // 使用 useMemo 缓存合约实例
+  const lotteryContract = useMemo(() => {
+    if (!signer) {
+      console.log('No signer available for contract');
+      return null;
+    }
+    try {
+      const contract = new ethers.Contract(CONTRACT_ADDRESSES.lottery, LOTTERY_ABI, signer);
+      console.log('Contract instance created');
+      return contract;
+    } catch (error) {
+      console.error('Failed to create contract instance:', error);
+      return null;
+    }
+  }, [signer]);
+
+  // 使用 useCallback 缓存函数
   const fetchAllLotteries = useCallback(async () => {
-    if (!lotteryContract) return;
+    if (!lotteryContract) {
+      console.log('No contract instance available for fetching lotteries');
+      return;
+    }
     
     try {
-      setLoading(true);
+      setError('');
+      console.log('Fetching lotteries from contract...');
+      
       const lotteriesData = await lotteryContract.getAllLotteries();
-      const formattedLotteries: Lottery[] = lotteriesData.map((lottery: any) => ({
+      console.log('Raw lotteries data received:', lotteriesData);
+      
+      // 检查数据是否为空
+      if (!lotteriesData || lotteriesData.length === 0) {
+        console.log('No lotteries found in contract - this is normal for fresh deployment');
+        setLotteries([]);
+        return;
+      }
+      
+      const formattedLotteries: Lottery[] = lotteriesData.map((lottery: any, index: number) => ({
         id: Number(lottery.id),
         name: lottery.name,
         description: lottery.description,
@@ -49,19 +106,35 @@ export const useLottery = () => {
         optionCounts: lottery.optionCounts.map((count: bigint) => Number(count)),
         optionAmounts: lottery.optionAmounts.map((amount: bigint) => ethers.formatEther(amount))
       }));
+      
+      console.log('Formatted lotteries:', formattedLotteries);
       setLotteries(formattedLotteries);
     } catch (error) {
       console.error('Failed to fetch lotteries:', error);
-    } finally {
-      setLoading(false);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setError(`Failed to load lotteries: ${errorMessage}`);
+      setLotteries([]);
     }
   }, [lotteryContract]);
 
   const fetchMyTickets = useCallback(async () => {
-    if (!lotteryContract || !account) return;
+    if (!lotteryContract || !debouncedAccount) {
+      console.log('No contract or account available for fetching tickets');
+      setMyTickets([]);
+      return;
+    }
     
     try {
-      const ticketsData = await lotteryContract.getUserTickets(account);
+      console.log('Fetching tickets for account:', debouncedAccount);
+      const ticketsData = await lotteryContract.getUserTickets(debouncedAccount);
+      console.log('Raw tickets data received:', ticketsData);
+      
+      if (!ticketsData || ticketsData.length === 0) {
+        console.log('No tickets found for account - this is normal if no purchases made');
+        setMyTickets([]);
+        return;
+      }
+      
       const formattedTickets: Ticket[] = ticketsData.map((ticket: any) => ({
         tokenId: Number(ticket.tokenId),
         lotteryId: Number(ticket.lotteryId),
@@ -72,17 +145,33 @@ export const useLottery = () => {
         purchaseTime: Number(ticket.purchaseTime),
         status: ticket.status
       }));
+      
+      console.log('Formatted tickets:', formattedTickets);
       setMyTickets(formattedTickets);
     } catch (error) {
       console.error('Failed to fetch tickets:', error);
+      setMyTickets([]);
     }
-  }, [lotteryContract, account]);
+  }, [lotteryContract, debouncedAccount]);
 
   const fetchActiveListings = useCallback(async () => {
-    if (!lotteryContract) return;
+    if (!lotteryContract) {
+      console.log('No contract instance available for fetching listings');
+      setActiveListings([]);
+      return;
+    }
     
     try {
+      console.log('Fetching active listings from contract...');
       const listingsData = await lotteryContract.getActiveListings();
+      console.log('Raw listings data received:', listingsData);
+      
+      if (!listingsData || listingsData.length === 0) {
+        console.log('No active listings found - this is normal if no tickets listed for sale');
+        setActiveListings([]);
+        return;
+      }
+      
       const formattedListings: Listing[] = listingsData.map((listing: any) => ({
         listingId: Number(listing.listingId),
         tokenId: Number(listing.tokenId),
@@ -96,12 +185,63 @@ export const useLottery = () => {
         listingTime: Number(listing.listingTime),
         status: listing.status
       }));
+      
+      console.log('Formatted listings:', formattedListings);
       setActiveListings(formattedListings);
     } catch (error) {
       console.error('Failed to fetch listings:', error);
+      setActiveListings([]);
     }
   }, [lotteryContract]);
 
+  // 初始化数据 - 使用防抖后的值
+  useEffect(() => {
+    let mounted = true;
+
+    const initializeData = async () => {
+      if (!mounted) return;
+      
+      if (debouncedIsConnected && lotteryContract) {
+        console.log('Initializing lottery data with debounced values...');
+        setLoading(true);
+        
+        try {
+          // 顺序加载数据
+          await fetchAllLotteries();
+          if (!mounted) return;
+          
+          await fetchMyTickets();
+          if (!mounted) return;
+          
+          await fetchActiveListings();
+          if (!mounted) return;
+          
+        } catch (error) {
+          console.error('Error during data initialization:', error);
+        } finally {
+          if (mounted) {
+            setLoading(false);
+          }
+        }
+      } else {
+        console.log('Resetting data - not connected or no contract');
+        // 重置状态当断开连接时
+        setLotteries([]);
+        setMyTickets([]);
+        setActiveListings([]);
+        setError('');
+        setLoading(false);
+      }
+    };
+
+    initializeData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [debouncedIsConnected, lotteryContract, fetchAllLotteries, fetchMyTickets, fetchActiveListings]);
+
+  // 创建彩票
   const createLottery = async (
     name: string,
     description: string,
@@ -111,64 +251,135 @@ export const useLottery = () => {
   ) => {
     if (!lotteryContract) throw new Error('Wallet not connected');
     
-    const tx = await lotteryContract.createLottery(
-      name,
-      description,
-      options,
-      ethers.parseEther(ticketPrice),
-      durationInDays
-    );
-    await tx.wait();
-    await fetchAllLotteries();
+    try {
+      console.log('Creating lottery:', { name, description, options, ticketPrice, durationInDays });
+      const tx = await lotteryContract.createLottery(
+        name,
+        description,
+        options,
+        ethers.parseEther(ticketPrice),
+        durationInDays
+      );
+      console.log('Transaction sent:', tx.hash);
+      await tx.wait();
+      console.log('Transaction confirmed');
+      
+      // 刷新数据
+      await fetchAllLotteries();
+    } catch (error) {
+      console.error('Failed to create lottery:', error);
+      throw error;
+    }
   };
 
+  // 购买彩票
   const purchaseTicket = async (lotteryId: number, optionId: number) => {
     if (!lotteryContract) throw new Error('Wallet not connected');
     
-    const tx = await lotteryContract.purchaseTicket(lotteryId, optionId);
-    await tx.wait();
-    await fetchMyTickets();
+    try {
+      console.log('Purchasing ticket:', { lotteryId, optionId });
+      const tx = await lotteryContract.purchaseTicket(lotteryId, optionId);
+      console.log('Purchase transaction sent:', tx.hash);
+      await tx.wait();
+      console.log('Purchase transaction confirmed');
+      
+      // 刷新数据
+      await fetchMyTickets();
+      await fetchAllLotteries(); // 刷新彩票数据
+    } catch (error) {
+      console.error('Failed to purchase ticket:', error);
+      throw error;
+    }
   };
 
+  // 挂单出售彩票
   const listTicket = async (tokenId: number, price: string) => {
     if (!lotteryContract) throw new Error('Wallet not connected');
     
-    const tx = await lotteryContract.listTicket(tokenId, ethers.parseEther(price));
-    await tx.wait();
-    await fetchMyTickets();
-    await fetchActiveListings();
+    try {
+      console.log('Listing ticket:', { tokenId, price });
+      const tx = await lotteryContract.listTicket(tokenId, ethers.parseEther(price));
+      console.log('List transaction sent:', tx.hash);
+      await tx.wait();
+      console.log('List transaction confirmed');
+      
+      // 刷新数据
+      await fetchMyTickets();
+      await fetchActiveListings();
+    } catch (error) {
+      console.error('Failed to list ticket:', error);
+      throw error;
+    }
   };
 
+  // 购买挂单
   const buyListing = async (listingId: number) => {
     if (!lotteryContract) throw new Error('Wallet not connected');
     
-    const tx = await lotteryContract.buyListing(listingId);
-    await tx.wait();
-    await fetchMyTickets();
-    await fetchActiveListings();
+    try {
+      console.log('Buying listing:', { listingId });
+      const tx = await lotteryContract.buyListing(listingId);
+      console.log('Buy listing transaction sent:', tx.hash);
+      await tx.wait();
+      console.log('Buy listing transaction confirmed');
+      
+      // 刷新数据
+      await fetchMyTickets();
+      await fetchActiveListings();
+    } catch (error) {
+      console.error('Failed to buy listing:', error);
+      throw error;
+    }
   };
 
-  useEffect(() => {
-    if (isConnected) {
-      fetchAllLotteries();
-      fetchMyTickets();
-      fetchActiveListings();
+  // 按最优价格购买
+  const buyAtBestPrice = async (lotteryId: number, optionId: number) => {
+    if (!lotteryContract) throw new Error('Wallet not connected');
+    
+    try {
+      console.log('Buying at best price:', { lotteryId, optionId });
+      const tx = await lotteryContract.buyAtBestPrice(lotteryId, optionId);
+      console.log('Buy at best price transaction sent:', tx.hash);
+      await tx.wait();
+      console.log('Buy at best price transaction confirmed');
+      
+      // 刷新数据
+      await fetchMyTickets();
+      await fetchActiveListings();
+    } catch (error) {
+      console.error('Failed to buy at best price:', error);
+      throw error;
     }
-  }, [isConnected, fetchAllLotteries, fetchMyTickets, fetchActiveListings]);
+  };
+
+  // 手动刷新所有数据
+  const refreshData = useCallback(async () => {
+    console.log('Manual refresh triggered');
+    setError('');
+    setLoading(true);
+    
+    try {
+      await fetchAllLotteries();
+      await fetchMyTickets();
+      await fetchActiveListings();
+    } catch (error) {
+      console.error('Error during manual refresh:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAllLotteries, fetchMyTickets, fetchActiveListings]);
 
   return {
     lotteries,
     myTickets,
     activeListings,
     loading,
+    error,
     createLottery,
     purchaseTicket,
     listTicket,
     buyListing,
-    refreshData: () => {
-      fetchAllLotteries();
-      fetchMyTickets();
-      fetchActiveListings();
-    }
+    buyAtBestPrice,
+    refreshData
   };
 };

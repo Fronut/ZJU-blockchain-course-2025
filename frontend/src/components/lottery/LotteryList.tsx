@@ -8,7 +8,7 @@ import { LotteryDetail } from './LotteryDetail';
 import { Lottery } from '../../types';
 
 export const LotteryList: React.FC = () => {
-  const { lotteries, loading } = useLottery();
+  const { lotteries, loading, error, refreshData } = useLottery();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedLottery, setSelectedLottery] = useState<Lottery | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'ended'>('all');
@@ -35,16 +35,42 @@ export const LotteryList: React.FC = () => {
           <h2 className="text-3xl font-bold text-gray-900">Lotteries</h2>
           <p className="text-gray-600 mt-2">Participate in exciting lottery games</p>
         </div>
-        <button
-          onClick={() => setShowCreateForm(true)}
-          className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-        >
-          Create Lottery
-        </button>
+        <div className="flex gap-4">
+          <button
+            onClick={refreshData}
+            className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-3 rounded-lg font-semibold transition-colors"
+          >
+            Refresh
+          </button>
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+          >
+            Create Lottery
+          </button>
+        </div>
       </div>
 
       {showCreateForm && (
         <CreateLottery onClose={() => setShowCreateForm(false)} />
+      )}
+
+      {/* 显示错误信息 */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-red-800 font-semibold">Error Loading Data</h4>
+              <p className="text-red-700 text-sm">{error}</p>
+            </div>
+            <button
+              onClick={refreshData}
+              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="flex gap-4 mb-6">
@@ -82,13 +108,25 @@ export const LotteryList: React.FC = () => {
 
       {loading ? (
         <Loading text="Loading lotteries..." />
+      ) : error ? (
+        <div className="text-center py-12">
+          <div className="text-red-400 text-6xl mb-4">❌</div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Failed to load data</h3>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={refreshData}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg"
+          >
+            Try Again
+          </button>
+        </div>
       ) : filteredLotteries.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-gray-400 text-6xl mb-4">🎯</div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">No lotteries found</h3>
           <p className="text-gray-600">
             {filter === 'all' 
-              ? 'No lotteries have been created yet.' 
+              ? 'No lotteries have been created yet. Create the first one!' 
               : `No ${filter} lotteries found.`}
           </p>
         </div>
