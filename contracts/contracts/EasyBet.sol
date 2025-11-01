@@ -18,12 +18,15 @@ contract LotteryPoints is ERC20, Ownable {
     // 每个用户可领取的积分数量
     uint256 public constant CLAIM_AMOUNT = 1000 * 10**18;
     
-    // 最大供应量 - 添加这个常量
+    // 最大供应量
     uint256 public constant MAX_SUPPLY = 10000000 * 10**18;
 
     event PointsClaimed(address indexed user, uint256 amount);
 
-    constructor() ERC20("LotteryPoints", "LTP") Ownable(msg.sender) {
+    constructor() 
+        ERC20("LotteryPoints", "LTP") 
+        Ownable(msg.sender) 
+    {
         // 初始发行100万积分给合约部署者，用于后续分配
         _mint(msg.sender, 1000000 * 10**18);
     }
@@ -52,7 +55,7 @@ contract LotteryPoints is ERC20, Ownable {
      * @dev 管理员铸造积分（仅用于测试）
      */
     function mint(address to, uint256 amount) external onlyOwner {
-        require(totalSupply() + amount <= MAX_SUPPLY, "Max supply exceeded"); // 添加检查
+        require(totalSupply() + amount <= MAX_SUPPLY, "Max supply exceeded");
         _mint(to, amount);
     }
 
@@ -65,6 +68,21 @@ contract LotteryPoints is ERC20, Ownable {
         for (uint256 i = 0; i < recipients.length; i++) {
             transfer(recipients[i], amounts[i]);
         }
+    }
+
+    /**
+     * @dev 重写 transferFrom 以确保正确实现
+     */
+    function transferFrom(address sender, address recipient, uint256 amount) 
+        public 
+        virtual 
+        override 
+        returns (bool) 
+    {
+        // 调用父类的 transferFrom
+        bool success = super.transferFrom(sender, recipient, amount);
+        require(success, "TransferFrom failed");
+        return success;
     }
 }
 
