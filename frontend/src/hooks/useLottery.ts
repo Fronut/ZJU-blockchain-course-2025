@@ -304,9 +304,26 @@ export const useLottery = () => {
       await tx.wait();
       console.log('Purchase transaction confirmed');
       
+      // === 新增：自动授权 NFT ===
+      const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.token, [
+        "function approve(address, uint256) returns (bool)",
+        "function balanceOf(address) view returns (uint256)"
+      ], signer);
+      
+      // 获取用户的最新票券
+      const userTickets = await lotteryContract.getUserTickets(account);
+      const latestTicket = userTickets[userTickets.length - 1];
+      
+      if (latestTicket) {
+        const approveTx = await tokenContract.approve(CONTRACT_ADDRESSES.lottery, latestTicket.tokenId);
+        await approveTx.wait();
+        console.log('✅ NFT auto-authorized for listing');
+      }
+      // === 授权结束 ===
+      
       // 刷新数据
       await fetchMyTickets();
-      await fetchAllLotteries(); // 刷新彩票数据
+      await fetchAllLotteries();
     } catch (error) {
       console.error('Failed to purchase ticket:', error);
       throw error;
@@ -315,21 +332,48 @@ export const useLottery = () => {
 
   // 挂单出售彩票
   const listTicket = async (tokenId: number, price: string) => {
-    if (!lotteryContract) throw new Error('Wallet not connected');
-    
+  if (!lotteryContract) throw new Error('Wallet not connected');
+
     try {
       console.log('Listing ticket:', { tokenId, price });
+      
+      // === 新增：检查 NFT 授权状态 ===
+      const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.token, [
+        "function getApproved(uint256) view returns (address)",
+        "function isApprovedForAll(address, address) view returns (bool)"
+      ], signer);
+      
+      const approvedAddress = await tokenContract.getApproved(tokenId);
+      const isApprovedForAll = await tokenContract.isApprovedForAll(account, CONTRACT_ADDRESSES.lottery);
+      
+      if (approvedAddress.toLowerCase() !== CONTRACT_ADDRESSES.lottery.toLowerCase() && !isApprovedForAll) {
+        throw new Error('NFT not authorized. Please authorize the NFT first.');
+      }
+      // === 授权检查结束 ===
+      
       const tx = await lotteryContract.listTicket(tokenId, ethers.parseEther(price));
       console.log('List transaction sent:', tx.hash);
       await tx.wait();
       console.log('List transaction confirmed');
       
-      // 刷新数据
       await fetchMyTickets();
       await fetchActiveListings();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to list ticket:', error);
-      throw error;
+      
+      // === 改进错误信息 ===
+      let errorMessage = 'Failed to list ticket';
+      if (error.reason?.includes('Not ticket owner')) {
+        errorMessage = 'You are not the owner of this ticket';
+      } else if (error.reason?.includes('Ticket not available')) {
+        errorMessage = 'Ticket is not available for listing';
+      } else if (error.reason?.includes('Lottery not active')) {
+        errorMessage = 'The lottery is no longer active';
+      } else if (error.message.includes('NFT not authorized')) {
+        errorMessage = 'NFT not authorized. Please authorize the NFT first.';
+      }
+      
+      throw new Error(errorMessage);
     }
   };
 
