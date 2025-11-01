@@ -17,6 +17,9 @@ contract LotteryPoints is ERC20, Ownable {
 
     // 每个用户可领取的积分数量
     uint256 public constant CLAIM_AMOUNT = 1000 * 10**18;
+    
+    // 最大供应量 - 添加这个常量
+    uint256 public constant MAX_SUPPLY = 10000000 * 10**18;
 
     event PointsClaimed(address indexed user, uint256 amount);
 
@@ -30,7 +33,7 @@ contract LotteryPoints is ERC20, Ownable {
      */
     function claimPoints() external {
         require(!hasClaimed[msg.sender], "Already claimed");
-        require(totalSupply() + CLAIM_AMOUNT <= 10000000 * 10**18, "Max supply exceeded");
+        require(totalSupply() + CLAIM_AMOUNT <= MAX_SUPPLY, "Max supply exceeded");
         
         hasClaimed[msg.sender] = true;
         _mint(msg.sender, CLAIM_AMOUNT);
@@ -42,6 +45,7 @@ contract LotteryPoints is ERC20, Ownable {
      * @dev 管理员铸造积分（仅用于测试）
      */
     function mint(address to, uint256 amount) external onlyOwner {
+        require(totalSupply() + amount <= MAX_SUPPLY, "Max supply exceeded"); // 添加检查
         _mint(to, amount);
     }
 
