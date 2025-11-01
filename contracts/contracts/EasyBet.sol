@@ -489,9 +489,16 @@ contract DecentralizedLottery is Ownable, ReentrancyGuard {
 
         uint256 ticketPrice = lottery.ticketPrice;
         
-        // 检查用户积分余额并转账
+        // 检查用户积分余额
         require(lotteryPoints.balanceOf(msg.sender) >= ticketPrice, "Insufficient points");
-        require(lotteryPoints.transferFrom(msg.sender, address(this), ticketPrice), "Transfer failed");
+        
+        // 检查授权额度
+        uint256 allowance = lotteryPoints.allowance(msg.sender, address(this));
+        require(allowance >= ticketPrice, "Insufficient allowance");
+        
+        // 使用 transferFrom 转账积分
+        bool success = lotteryPoints.transferFrom(msg.sender, address(this), ticketPrice);
+        require(success, "Transfer failed");
 
         // 更新奖池和选项数据
         lottery.totalPool += ticketPrice;
@@ -595,11 +602,14 @@ contract DecentralizedLottery is Ownable, ReentrancyGuard {
         require(listing.status == ListingStatus.Selling, "Listing not active");
         require(listing.seller != msg.sender, "Cannot buy your own listing");
 
-        // 检查买方余额
+        // 检查买方余额和授权
         require(lotteryPoints.balanceOf(msg.sender) >= listing.price, "Insufficient points");
+        uint256 allowance = lotteryPoints.allowance(msg.sender, address(this));
+        require(allowance >= listing.price, "Insufficient allowance");
         
         // 转账积分
-        require(lotteryPoints.transferFrom(msg.sender, listing.seller, listing.price), "Transfer failed");
+        bool success = lotteryPoints.transferFrom(msg.sender, listing.seller, listing.price);
+        require(success, "Transfer failed");
 
         LotteryToken.TicketInfo memory ticket = lotteryToken.getTicketDetails(listing.tokenId);
 
