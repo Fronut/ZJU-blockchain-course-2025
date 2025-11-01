@@ -72,7 +72,7 @@ export const useLottery = () => {
     }
   }, [signer]);
 
-  // 使用 useCallback 缓存函数
+  // 在 fetchAllLotteries 函数中添加调试
   const fetchAllLotteries = useCallback(async () => {
     if (!lotteryContract) {
       console.log('No contract instance available for fetching lotteries');
@@ -88,24 +88,43 @@ export const useLottery = () => {
       
       // 检查数据是否为空
       if (!lotteriesData || lotteriesData.length === 0) {
-        console.log('No lotteries found in contract - this is normal for fresh deployment');
+        console.log('No lotteries found in contract');
         setLotteries([]);
         return;
       }
       
-      const formattedLotteries: Lottery[] = lotteriesData.map((lottery: any, index: number) => ({
-        id: Number(lottery.id),
-        name: lottery.name,
-        description: lottery.description,
-        options: lottery.options,
-        totalPool: ethers.formatEther(lottery.totalPool),
-        endTime: Number(lottery.endTime),
-        status: lottery.status,
-        winningOption: Number(lottery.winningOption),
-        ticketPrice: ethers.formatEther(lottery.ticketPrice),
-        optionCounts: lottery.optionCounts.map((count: bigint) => Number(count)),
-        optionAmounts: lottery.optionAmounts.map((amount: bigint) => ethers.formatEther(amount))
-      }));
+      const formattedLotteries: Lottery[] = lotteriesData.map((lottery: any, index: number) => {
+        const endTime = Number(lottery.endTime);
+        const currentTime = Math.floor(Date.now() / 1000);
+        const timeRemaining = endTime - currentTime;
+        
+        console.log(`Lottery ${index}:`, {
+          id: Number(lottery.id),
+          name: lottery.name,
+          status: lottery.status,
+          endTime: endTime,
+          currentTime: currentTime,
+          timeRemaining: timeRemaining,
+          timeRemainingDays: timeRemaining / (60 * 60 * 24),
+          isActive: timeRemaining > 0 && lottery.status === 0,
+          totalPool: ethers.formatEther(lottery.totalPool),
+          ticketPrice: ethers.formatEther(lottery.ticketPrice)
+        });
+        
+        return {
+          id: Number(lottery.id),
+          name: lottery.name,
+          description: lottery.description,
+          options: lottery.options,
+          totalPool: ethers.formatEther(lottery.totalPool),
+          endTime: endTime,
+          status: lottery.status,
+          winningOption: Number(lottery.winningOption),
+          ticketPrice: ethers.formatEther(lottery.ticketPrice),
+          optionCounts: lottery.optionCounts.map((count: bigint) => Number(count)),
+          optionAmounts: lottery.optionAmounts.map((amount: bigint) => ethers.formatEther(amount))
+        };
+      });
       
       console.log('Formatted lotteries:', formattedLotteries);
       setLotteries(formattedLotteries);

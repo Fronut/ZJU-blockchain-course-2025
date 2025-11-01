@@ -18,10 +18,22 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const timeRemaining = lottery.endTime * 1000 - Date.now();
+  // 正确的时间计算
+  const currentTime = Math.floor(Date.now() / 1000); // 当前时间戳（秒）
+  const timeRemaining = lottery.endTime - currentTime;
   const isActive = lottery.status === 0 && timeRemaining > 0;
   const totalTickets = lottery.optionCounts.reduce((sum, count) => sum + count, 0);
   const hasEnoughPoints = parseFloat(pointsBalance) >= parseFloat(lottery.ticketPrice);
+
+  console.log('LotteryDetail debug:', {
+    lotteryId: lottery.id,
+    status: lottery.status,
+    endTime: lottery.endTime,
+    currentTime,
+    timeRemaining,
+    isActive,
+    totalTickets
+  });
 
   const handlePurchase = async () => {
     if (selectedOption === null) {
@@ -34,12 +46,16 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
       return;
     }
 
+    if (!isActive) {
+      setError('This lottery is no longer active');
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
       await purchaseTicket(lottery.id, selectedOption);
       setSelectedOption(null);
-      // Success message could be shown here
     } catch (err: any) {
       setError(err.message || 'Failed to purchase ticket');
     } finally {
@@ -73,6 +89,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
               <div className="text-blue-100 text-sm">Status</div>
               <div className="text-xl font-semibold">
                 {LOTTERY_STATUS_MAP[lottery.status as keyof typeof LOTTERY_STATUS_MAP]}
+                {!isActive && lottery.status === 0 && ' (Ended)'}
               </div>
             </div>
           </div>
@@ -99,7 +116,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
           <div className="text-center">
             <div className="text-2xl font-bold">
               {timeRemaining > 0 
-                ? `${Math.ceil(timeRemaining / (1000 * 60 * 60 * 24))} days`
+                ? `${Math.ceil(timeRemaining / (60 * 60 * 24))} days`
                 : 'Ended'
               }
             </div>
@@ -118,10 +135,10 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
                   <div
                     key={index}
                     className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                      selectedOption === index
+                      selectedOption === index && isActive
                         ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
                         : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                    } ${!isActive ? 'opacity-60 cursor-not-allowed' : ''}`}
                     onClick={() => isActive && setSelectedOption(index)}
                   >
                     <div className="flex justify-between items-start mb-2">
@@ -161,8 +178,8 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <p className="text-yellow-800">
                     {lottery.status !== 0 
-                      ? 'This lottery has ended.' 
-                      : 'This lottery has expired.'
+                      ? `This lottery has been ${LOTTERY_STATUS_MAP[lottery.status as keyof typeof LOTTERY_STATUS_MAP].toLowerCase()}.` 
+                      : 'This lottery has ended.'
                     }
                   </p>
                 </div>
@@ -211,7 +228,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
 
                   <button
                     onClick={handlePurchase}
-                    disabled={!selectedOption || !hasEnoughPoints || loading}
+                    disabled={!selectedOption || !hasEnoughPoints || !isActive || loading}
                     className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white py-3 rounded-lg font-semibold transition-colors flex items-center justify-center"
                   >
                     {loading ? (
