@@ -293,47 +293,82 @@ export const useLottery = () => {
     }
   };
 
-  // 购买彩票
+  // 购买彩票 - 修复版本
   const purchaseTicket = async (lotteryId: number, optionId: number) => {
-    if (!lotteryContract) throw new Error('Wallet not connected');
+    if (!lotteryContract || !signer || !account) throw new Error('Wallet not connected');
     
     try {
       console.log('Purchasing ticket:', { lotteryId, optionId });
-      const tx = await lotteryContract.purchaseTicket(lotteryId, optionId);
+      
+      // === 新增：自动检查并授权 LTP ===
+      const pointsContract = new ethers.Contract(CONTRACT_ADDRESSES.points, [
+        "function allowance(address, address) view returns (uint256)",
+        "function approve(address, uint256) returns (bool)"
+      ], signer);
+      
+      const userAllowance = await pointsContract.allowance(account, CONTRACT_ADDRESSES.lottery);
+      const lotteries = await lotteryContract.getAllLotteries();
+      const lottery = lotteries[lotteryId];
+      
+      console.log('LTP allowance check:', {
+        userAllowance: userAllowance.toString(),
+        ticketPrice: lottery.ticketPrice.toString(),
+        needsApproval: userAllowance < lottery.ticketPrice
+      });
+      
+      if (userAllowance < lottery.ticketPrice) {
+        console.log('Insufficient allowance, auto-approving LTP...');
+        const approveTx = await pointsContract.approve(
+          CONTRACT_ADDRESSES.lottery, 
+          ethers.parseEther("10000") // 授权足够大的金额
+        );
+        console.log('Approval transaction sent:', approveTx.hash);
+        await approveTx.wait();
+        console.log('Auto-approval completed');
+      }
+      // === 自动授权结束 ===
+      
+      const tx = await lotteryContract.purchaseTicket(lotteryId, optionId, {
+        gasLimit: 500000
+      });
       console.log('Purchase transaction sent:', tx.hash);
-      await tx.wait();
+      const receipt = await tx.wait();
       console.log('Purchase transaction confirmed');
       
       // === 新增：自动授权 NFT ===
-      const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.token, [
-        "function approve(address, uint256) returns (bool)",
-        "function balanceOf(address) view returns (uint256)"
-      ], signer);
-      
-      // 获取用户的最新票券
-      const userTickets = await lotteryContract.getUserTickets(account);
-      const latestTicket = userTickets[userTickets.length - 1];
-      
-      if (latestTicket) {
-        const approveTx = await tokenContract.approve(CONTRACT_ADDRESSES.lottery, latestTicket.tokenId);
-        await approveTx.wait();
-        console.log('✅ NFT auto-authorized for listing');
+      try {
+        const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.token, [
+          "function approve(address, uint256) returns (bool)"
+        ], signer);
+        
+        // 获取用户的最新票券
+        const userTickets = await lotteryContract.getUserTickets(account);
+        const latestTicket = userTickets[userTickets.length - 1];
+        
+        if (latestTicket) {
+          const approveTx = await tokenContract.approve(CONTRACT_ADDRESSES.lottery, latestTicket.tokenId);
+          await approveTx.wait();
+          console.log('✅ NFT auto-authorized for listing');
+        }
+      } catch (authError) {
+        console.warn('NFT auto-authorization failed:', authError);
+        // 不阻止购买流程继续
       }
       // === 授权结束 ===
       
       // 刷新数据
       await fetchMyTickets();
-      await fetchAllLotteries();
+      await fetchAllLotteries(); // 刷新彩票数据
     } catch (error) {
       console.error('Failed to purchase ticket:', error);
       throw error;
     }
   };
 
-  // 挂单出售彩票
+  // 挂单出售彩票 - 改进版本
   const listTicket = async (tokenId: number, price: string) => {
-  if (!lotteryContract) throw new Error('Wallet not connected');
-
+    if (!lotteryContract || !signer) throw new Error('Wallet not connected');
+    
     try {
       console.log('Listing ticket:', { tokenId, price });
       
@@ -346,16 +381,25 @@ export const useLottery = () => {
       const approvedAddress = await tokenContract.getApproved(tokenId);
       const isApprovedForAll = await tokenContract.isApprovedForAll(account, CONTRACT_ADDRESSES.lottery);
       
+      console.log('NFT authorization check:', {
+        approvedAddress,
+        isApprovedForAll,
+        lotteryAddress: CONTRACT_ADDRESSES.lottery
+      });
+      
       if (approvedAddress.toLowerCase() !== CONTRACT_ADDRESSES.lottery.toLowerCase() && !isApprovedForAll) {
         throw new Error('NFT not authorized. Please authorize the NFT first.');
       }
       // === 授权检查结束 ===
       
-      const tx = await lotteryContract.listTicket(tokenId, ethers.parseEther(price));
+      const tx = await lotteryContract.listTicket(tokenId, ethers.parseEther(price), {
+        gasLimit: 800000
+      });
       console.log('List transaction sent:', tx.hash);
       await tx.wait();
       console.log('List transaction confirmed');
       
+      // 刷新数据
       await fetchMyTickets();
       await fetchActiveListings();
     } catch (error: any) {
@@ -371,6 +415,8 @@ export const useLottery = () => {
         errorMessage = 'The lottery is no longer active';
       } else if (error.message.includes('NFT not authorized')) {
         errorMessage = 'NFT not authorized. Please authorize the NFT first.';
+      } else if (error.reason?.includes('Price must be greater than 0')) {
+        errorMessage = 'Price must be greater than 0';
       }
       
       throw new Error(errorMessage);
@@ -383,7 +429,9 @@ export const useLottery = () => {
     
     try {
       console.log('Buying listing:', { listingId });
-      const tx = await lotteryContract.buyListing(listingId);
+      const tx = await lotteryContract.buyListing(listingId, {
+        gasLimit: 800000
+      });
       console.log('Buy listing transaction sent:', tx.hash);
       await tx.wait();
       console.log('Buy listing transaction confirmed');
@@ -403,7 +451,9 @@ export const useLottery = () => {
     
     try {
       console.log('Buying at best price:', { lotteryId, optionId });
-      const tx = await lotteryContract.buyAtBestPrice(lotteryId, optionId);
+      const tx = await lotteryContract.buyAtBestPrice(lotteryId, optionId, {
+        gasLimit: 800000
+      });
       console.log('Buy at best price transaction sent:', tx.hash);
       await tx.wait();
       console.log('Buy at best price transaction confirmed');

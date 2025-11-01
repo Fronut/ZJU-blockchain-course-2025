@@ -5,114 +5,83 @@ async function main() {
   console.log("🔍 === DEBUGGING PURCHASE ISSUE ===\n");
   
   const [deployer, user1] = await ethers.getSigners();
-  console.log("Deployer:", deployer.address);
-  console.log("User1:", user1.address);
-
-  // 使用最新部署的地址
-  const lotteryAddress = "0x2988CDcD1d31700C0297d3ac9D0c95dEa562B073";
-  const pointsAddress = "0x56bf994f3917680069038fEd572082b47c6A3D0c";
+  
+  const lotteryAddress = "0x3141118110f87875f600B3FeE4DF9c8E826e2003";
+  const pointsAddress = "0x4918b54d4402e1E15F545b25bE4b40420D214c2B";
   
   const lotteryABI = [
+    "function getAllLotteries() view returns (tuple(uint256 id, string name, string description, string[] options, uint256 totalPool, uint256 endTime, uint8 status, uint256 winningOption, uint256 ticketPrice, uint256[] optionCounts, uint256[] optionAmounts)[])",
     "function purchaseTicket(uint256 lotteryId, uint256 optionId)",
-    "function getAllLotteries() view returns (tuple(uint256 id, string name, string description, string[] options, uint256 totalPool, uint256 endTime, uint8 status, uint256 winningOption, uint256 ticketPrice, uint256[] optionCounts, uint256[] optionAmounts)[])"
+    "function getContractAddresses() view returns (address points, address token)"
   ];
 
   const pointsABI = [
     "function balanceOf(address) view returns (uint256)",
-    "function allowance(address, address) view returns (uint256)",
-    "function approve(address, uint256) returns (bool)",
-    "function transferFrom(address, address, uint256) returns (bool)"
+    "function allowance(address, address) view returns (uint256)"
   ];
 
   try {
-    const lotteryContract = new ethers.Contract(lotteryAddress, lotteryABI, user1);
-    const pointsContract = new ethers.Contract(pointsAddress, pointsABI, user1);
+    const lottery = new ethers.Contract(lotteryAddress, lotteryABI, deployer);
+    const points = new ethers.Contract(pointsAddress, pointsABI, deployer);
 
-    console.log("1. Checking current state...");
+    console.log("1. Checking lottery details...");
+    const lotteries = await lottery.getAllLotteries();
     
-    // 检查用户余额
-    const userBalance = await pointsContract.balanceOf(user1.address);
-    console.log("   - User1 balance:", ethers.utils.formatEther(userBalance), "LTP");
-
-    // 检查彩票价格
-    const lotteries = await lotteryContract.getAllLotteries();
-    const nbaLottery = lotteries[0];
-    const ticketPrice = nbaLottery.ticketPrice;
-    console.log("   - Ticket price:", ethers.utils.formatEther(ticketPrice), "LTP");
-
-    // 检查授权额度（关键！检查对主合约的授权）
-    const allowanceToLottery = await pointsContract.allowance(user1.address, lotteryAddress);
-    console.log("   - Allowance to Lottery contract:", ethers.utils.formatEther(allowanceToLottery), "LTP");
-
-    // 检查授权额度（检查对积分合约本身的授权）
-    const allowanceToPoints = await pointsContract.allowance(user1.address, pointsAddress);
-    console.log("   - Allowance to Points contract:", ethers.utils.formatEther(allowanceToPoints), "LTP");
-
-    console.log("\n2. Testing conditions...");
-    console.log("   - Balance >= Price?", userBalance.gte(ticketPrice));
-    console.log("   - Allowance >= Price?", allowanceToLottery.gte(ticketPrice));
-
-    // 如果授权不足，重新授权
-    if (allowanceToLottery.lt(ticketPrice)) {
-      console.log("\n3. Re-approving contract...");
-      const approveTx = await pointsContract.approve(lotteryAddress, ethers.utils.parseEther("10000"));
-      await approveTx.wait();
-      console.log("   ✅ Re-approved lottery contract");
-      
-      // 重新检查授权
-      const newAllowance = await pointsContract.allowance(user1.address, lotteryAddress);
-      console.log("   - New allowance:", ethers.utils.formatEther(newAllowance), "LTP");
+    if (lotteries.length === 0) {
+      console.log("   ❌ No lotteries found");
+      return;
     }
 
-    console.log("\n4. Testing direct transferFrom...");
+    const lottery0 = lotteries[0];
+    console.log("   - Lottery 0:", lottery0.name);
+    console.log("   - Status:", lottery0.status);
+    console.log("   - Ticket Price:", ethers.utils.formatEther(lottery0.ticketPrice), "LTP");
+    console.log("   - Options:", lottery0.options);
+    console.log("   - End Time:", new Date(Number(lottery0.endTime) * 1000).toLocaleString());
+    console.log("   - Current Time:", new Date().toLocaleString());
+    console.log("   - Is active?", lottery0.status === 0 && Number(lottery0.endTime) > Math.floor(Date.now() / 1000));
+
+    console.log("\n2. Checking user balance and allowance...");
+    const userBalance = await points.balanceOf(user1.address);
+    const userAllowance = await points.allowance(user1.address, lotteryAddress);
+    
+    console.log("   - User balance:", ethers.utils.formatEther(userBalance), "LTP");
+    console.log("   - User allowance:", ethers.utils.formatEther(userAllowance), "LTP");
+    console.log("   - Ticket price:", ethers.utils.formatEther(lottery0.ticketPrice), "LTP");
+    console.log("   - Has enough balance?", userBalance >= lottery0.ticketPrice);
+    console.log("   - Has enough allowance?", userAllowance >= lottery0.ticketPrice);
+
+    console.log("\n3. Testing purchase directly...");
+    const user1Lottery = lottery.connect(user1);
+    
     try {
-      // 测试从用户到主合约的transferFrom
-      const testTx = await pointsContract.transferFrom(
-        user1.address, 
-        lotteryAddress, 
-        ticketPrice,
-        { gasLimit: 200000 }
-      );
-      await testTx.wait();
-      console.log("   ✅ Direct transferFrom successful!");
+      // 测试购买 Option 0
+      console.log("   Testing Option 0...");
+      const tx0 = await user1Lottery.purchaseTicket(0, 0, { gasLimit: 500000 });
+      await tx0.wait();
+      console.log("   ✅ Option 0 purchase successful");
     } catch (error: any) {
-      console.log("   ❌ Direct transferFrom failed:", error.reason || error.message);
-      
-      // 如果transferFrom失败，问题可能在积分合约的授权逻辑
-      console.log("\n5. Debugging transferFrom failure...");
-      
-      // 检查积分合约的owner
-      const pointsOwner = await pointsContract.owner ? await pointsContract.owner() : "No owner function";
-      console.log("   - Points contract owner:", pointsOwner);
-      
-      // 检查是否实现了正确的ERC20接口
-      console.log("   - Checking ERC20 implementation...");
+      console.log("   ❌ Option 0 failed:", error.reason || error.message);
     }
 
-    console.log("\n6. Attempting purchase with detailed error handling...");
     try {
-      const purchaseTx = await lotteryContract.purchaseTicket(0, 0, {
-        gasLimit: 500000
-      });
-      console.log("   ⏳ Purchase transaction sent:", purchaseTx.hash);
-      const receipt = await purchaseTx.wait();
-      console.log("   ✅ Purchase successful! Gas used:", receipt.gasUsed.toString());
-      
-      // 检查购买后的状态
-      const lotteriesAfter = await lotteryContract.getAllLotteries();
-      const nbaAfter = lotteriesAfter[0];
-      console.log("   - Lottery pool after purchase:", ethers.utils.formatEther(nbaAfter.totalPool), "LTP");
-      
+      // 测试购买 Option 1
+      console.log("   Testing Option 1...");
+      const tx1 = await user1Lottery.purchaseTicket(0, 1, { gasLimit: 500000 });
+      await tx1.wait();
+      console.log("   ✅ Option 1 purchase successful");
     } catch (error: any) {
-      console.log("   ❌ Purchase failed with details:");
-      console.log("   - Error:", error.message);
-      if (error.reason) console.log("   - Reason:", error.reason);
-      if (error.data) console.log("   - Data:", error.data);
-      
-      // 检查交易回滚的具体原因
-      if (error.transaction) {
-        console.log("   - Transaction:", error.transaction);
-      }
+      console.log("   ❌ Option 1 failed:", error.reason || error.message);
+    }
+
+    try {
+      // 测试购买 Option 2
+      console.log("   Testing Option 2...");
+      const tx2 = await user1Lottery.purchaseTicket(0, 2, { gasLimit: 500000 });
+      await tx2.wait();
+      console.log("   ✅ Option 2 purchase successful");
+    } catch (error: any) {
+      console.log("   ❌ Option 2 failed:", error.reason || error.message);
     }
 
   } catch (error: any) {

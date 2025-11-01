@@ -1,10 +1,13 @@
 // src/components/lottery/LotteryDetail.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Lottery } from '../../types';
 import { useLottery } from '../../hooks/useLottery';
 import { usePoints } from '../../hooks/usePoints';
 import { LOTTERY_STATUS_MAP } from '../../utils/constants';
 import { Loading } from '../common/Loading';
+import { ethers } from 'ethers';
+import { CONTRACT_ADDRESSES } from '../../utils/constants';
+import { useWeb3 } from '../../hooks/useWeb3';
 
 interface LotteryDetailProps {
   lottery: Lottery;
@@ -14,9 +17,12 @@ interface LotteryDetailProps {
 export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack }) => {
   const { purchaseTicket } = useLottery();
   const { pointsBalance } = usePoints();
+  const { account, isConnected } = useWeb3();
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [needsApproval, setNeedsApproval] = useState(false);
+  const [approving, setApproving] = useState(false);
 
   // 正确的时间计算 - 确保使用秒为单位
   const currentTime = Math.floor(Date.now() / 1000); // 当前时间戳（秒）
@@ -25,17 +31,66 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
   const totalTickets = lottery.optionCounts.reduce((sum, count) => sum + count, 0);
   const hasEnoughPoints = parseFloat(pointsBalance) >= parseFloat(lottery.ticketPrice);
 
-  console.log('LotteryDetail debug:', {
-    lotteryId: lottery.id,
-    status: lottery.status,
-    endTime: lottery.endTime,
-    currentTime,
-    timeRemaining,
-    isActive,
-    totalTickets,
-    statusNumber: Number(lottery.status)
-  });
+  // 检查授权状态
+  const checkApproval = async () => {
+    if (!isConnected || !account) return;
+    
+    try {
+      const { ethereum } = window as any;
+      const provider = new ethers.BrowserProvider(ethereum);
+      const signer = await provider.getSigner();
+      
+      const pointsContract = new ethers.Contract(CONTRACT_ADDRESSES.points, [
+        "function allowance(address, address) view returns (uint256)"
+      ], signer);
+      
+      const allowance = await pointsContract.allowance(account, CONTRACT_ADDRESSES.lottery);
+      const ticketPriceWei = ethers.parseEther(lottery.ticketPrice);
+      
+      console.log('Approval check:', {
+        allowance: allowance.toString(),
+        ticketPriceWei: ticketPriceWei.toString(),
+        needsApproval: allowance < ticketPriceWei
+      });
+      
+      setNeedsApproval(allowance < ticketPriceWei);
+    } catch (error) {
+      console.error('Failed to check approval:', error);
+    }
+  };
 
+  // 授权函数
+  const handleApprove = async () => {
+    try {
+      setApproving(true);
+      setError('');
+      
+      const { ethereum } = window as any;
+      const provider = new ethers.BrowserProvider(ethereum);
+      const signer = await provider.getSigner();
+      
+      const pointsContract = new ethers.Contract(CONTRACT_ADDRESSES.points, [
+        "function approve(address, uint256) returns (bool)"
+      ], signer);
+      
+      const approveAmount = ethers.parseEther("10000"); // 授权足够大的金额
+      console.log('Approving LTP:', approveAmount.toString());
+      
+      const tx = await pointsContract.approve(CONTRACT_ADDRESSES.lottery, approveAmount);
+      console.log('Approval transaction sent:', tx.hash);
+      await tx.wait();
+      
+      setNeedsApproval(false);
+      console.log('LTP approval successful');
+    } catch (error: any) {
+      console.error('Approval failed:', error);
+      setError(error.message || 'Failed to approve LTP');
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  // 购买函数
   const handlePurchase = async () => {
     if (selectedOption === null) {
       setError('Please select an option');
@@ -57,6 +112,12 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
       setError('');
       await purchaseTicket(lottery.id, selectedOption);
       setSelectedOption(null);
+      
+      // 购买后重新检查授权状态（可能变化）
+      setTimeout(() => {
+        checkApproval();
+      }, 2000);
+      
     } catch (err: any) {
       setError(err.message || 'Failed to purchase ticket');
     } finally {
@@ -68,6 +129,26 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
     if (totalTickets === 0) return 0;
     return (lottery.optionCounts[optionIndex] / totalTickets) * 100;
   };
+
+  // 监听账户和彩票价格变化
+  useEffect(() => {
+    if (isConnected && account) {
+      checkApproval();
+    }
+  }, [isConnected, account, lottery.ticketPrice]);
+
+  console.log('LotteryDetail debug:', {
+    lotteryId: lottery.id,
+    status: lottery.status,
+    endTime: lottery.endTime,
+    currentTime,
+    timeRemaining,
+    isActive,
+    totalTickets,
+    needsApproval,
+    pointsBalance,
+    ticketPrice: lottery.ticketPrice
+  });
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -184,7 +265,54 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
                     }
                   </p>
                 </div>
+              ) : needsApproval ? (
+                // === 新增：授权界面 ===
+                <div className="space-y-4">
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <div className="flex items-center">
+                      <svg className="w-5 h-5 text-orange-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <div>
+                        <h4 className="text-orange-800 font-semibold">Approval Required</h4>
+                        <p className="text-orange-700 text-sm">
+                          You need to approve the contract to spend your LTP points before purchasing tickets.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex justify-between text-sm mb-2">
+                      <span>Your Points Balance:</span>
+                      <span className="font-semibold">{parseFloat(pointsBalance).toLocaleString()} LTP</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Ticket Price:</span>
+                      <span className="font-semibold">{parseFloat(lottery.ticketPrice).toLocaleString()} LTP</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleApprove}
+                    disabled={approving}
+                    className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white py-3 rounded-lg font-semibold transition-colors flex items-center justify-center"
+                  >
+                    {approving ? (
+                      <Loading size="sm" text="" />
+                    ) : (
+                      `Approve LTP Usage`
+                    )}
+                  </button>
+
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <p className="text-red-800">{error}</p>
+                    </div>
+                  )}
+                </div>
               ) : (
+                // === 原有的购买界面 ===
                 <div className="space-y-4">
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <div className="flex justify-between text-sm mb-2">
@@ -197,9 +325,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
                     </div>
                     <div className="flex justify-between text-sm mt-2 font-medium">
                       <span>Remaining after purchase:</span>
-                      <span className={
-                        hasEnoughPoints ? 'text-green-600' : 'text-red-600'
-                      }>
+                      <span className={hasEnoughPoints ? 'text-green-600' : 'text-red-600'}>
                         {(parseFloat(pointsBalance) - parseFloat(lottery.ticketPrice)).toLocaleString()} LTP
                       </span>
                     </div>
