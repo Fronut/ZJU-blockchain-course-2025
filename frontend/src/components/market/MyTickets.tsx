@@ -22,6 +22,7 @@ export const MyTickets: React.FC = () => {
   const [authorizing, setAuthorizing] = useState<number | null>(null);
   const [filter, setFilter] = useState<TicketStatus | 'all'>('all');
   const [nftApprovals, setNftApprovals] = useState<{[key: number]: boolean}>({});
+  const [viewMode, setViewMode] = useState<'details' | 'sell'>('details'); // 新增：区分查看和售卖模式
 
   // 检查NFT授权状态
   const checkNFTApproval = async (tokenId: number) => {
@@ -119,6 +120,7 @@ export const MyTickets: React.FC = () => {
       await listTicket(tokenId, price);
       setSelectedTicket(null);
       setSellPrice('');
+      setViewMode('details'); // 重置为详情模式
     } catch (error) {
       console.error('Failed to list ticket:', error);
     } finally {
@@ -139,6 +141,26 @@ export const MyTickets: React.FC = () => {
 
   const getStatusText = (status: any) => {
     return TICKET_STATUS_MAP[Number(status) as keyof typeof TICKET_STATUS_MAP];
+  };
+
+  // 处理查看票券详情
+  const handleViewDetails = (ticket: Ticket) => {
+    setSelectedTicket(ticket);
+    setViewMode('details'); // 设置为详情模式
+  };
+
+  // 处理开始售卖
+  const handleStartSelling = (ticket: Ticket) => {
+    setSelectedTicket(ticket);
+    setViewMode('sell'); // 设置为售卖模式
+    setSellPrice(''); // 重置售卖价格
+  };
+
+  // 关闭模态框
+  const handleCloseModal = () => {
+    setSelectedTicket(null);
+    setSellPrice('');
+    setViewMode('details'); // 重置为详情模式
   };
 
   if (loading) {
@@ -287,22 +309,33 @@ export const MyTickets: React.FC = () => {
                       </div>
                     )}
                     
-                    <button
-                      onClick={() => setSelectedTicket(ticket)}
-                      disabled={!nftApprovals[ticket.tokenId]}
-                      className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white py-2 rounded font-medium transition-colors"
-                    >
-                      Sell Ticket
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleViewDetails(ticket)}
+                        className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 rounded font-medium transition-colors"
+                      >
+                        View Details
+                      </button>
+                      <button
+                        onClick={() => handleStartSelling(ticket)}
+                        disabled={!nftApprovals[ticket.tokenId]}
+                        className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white py-2 rounded font-medium transition-colors"
+                      >
+                        Sell Ticket
+                      </button>
+                    </div>
                   </div>
                 )}
 
                 {compareStatus(ticket.status, TicketStatus.OnSale) && (
-                  <div className="text-center">
-                    <p className="text-sm text-gray-600">Currently listed for sale</p>
+                  <div className="space-y-2">
+                    <div className="text-center bg-blue-50 border border-blue-200 rounded p-2">
+                      <p className="text-blue-700 text-sm font-medium">Currently Listed for Sale</p>
+                      <p className="text-blue-600 text-xs">This ticket is available on the market</p>
+                    </div>
                     <button
-                      onClick={() => setSelectedTicket(ticket)}
-                      className="mt-2 text-blue-500 hover:text-blue-600 text-sm"
+                      onClick={() => handleViewDetails(ticket)}
+                      className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded font-medium transition-colors"
                     >
                       View Details
                     </button>
@@ -313,6 +346,12 @@ export const MyTickets: React.FC = () => {
                   <div className="text-center">
                     <p className="text-sm text-green-600 font-semibold">🎉 Winning Ticket!</p>
                     <p className="text-xs text-gray-600 mt-1">Congratulations!</p>
+                    <button
+                      onClick={() => handleViewDetails(ticket)}
+                      className="mt-2 w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded font-medium transition-colors"
+                    >
+                      View Details
+                    </button>
                   </div>
                 )}
 
@@ -320,6 +359,12 @@ export const MyTickets: React.FC = () => {
                   <div className="text-center">
                     <p className="text-sm text-red-600">Losing Ticket</p>
                     <p className="text-xs text-gray-600 mt-1">Better luck next time!</p>
+                    <button
+                      onClick={() => handleViewDetails(ticket)}
+                      className="mt-2 w-full bg-gray-500 hover:bg-gray-600 text-white py-2 rounded font-medium transition-colors"
+                    >
+                      View Details
+                    </button>
                   </div>
                 )}
               </div>
@@ -328,112 +373,181 @@ export const MyTickets: React.FC = () => {
         </div>
       )}
 
-      {/* Sell Ticket Modal */}
+      {/* 模态框 - 根据模式显示不同内容 */}
       {selectedTicket && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold">Sell Ticket</h3>
+                <h3 className="text-xl font-bold">
+                  {viewMode === 'sell' ? 'Sell Ticket' : 'Ticket Details'}
+                </h3>
                 <button
-                  onClick={() => {
-                    setSelectedTicket(null);
-                    setSellPrice('');
-                  }}
+                  onClick={handleCloseModal}
                   className="text-gray-400 hover:text-gray-600 text-2xl"
                 >
                   ×
                 </button>
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Lottery
-                  </label>
-                  <p className="font-medium">{selectedTicket.lotteryName}</p>
-                </div>
+              {viewMode === 'details' ? (
+                // 详情模式
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Lottery
+                    </label>
+                    <p className="font-medium">{selectedTicket.lotteryName}</p>
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Option
-                  </label>
-                  <p className="font-medium">{selectedTicket.optionName}</p>
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Option
+                    </label>
+                    <p className="font-medium">{selectedTicket.optionName}</p>
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Original Value
-                  </label>
-                  <p className="font-medium">{parseFloat(selectedTicket.amount).toLocaleString()} LTP</p>
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Token ID
+                    </label>
+                    <p className="font-mono">#{selectedTicket.tokenId}</p>
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Selling Price (LTP)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    min="0.001"
-                    value={sellPrice}
-                    onChange={(e) => setSellPrice(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter selling price"
-                  />
-                  <p className="text-sm text-gray-500 mt-1">
-                    Set the price you want to sell this ticket for
-                  </p>
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Purchase Price
+                    </label>
+                    <p className="font-medium">{parseFloat(selectedTicket.amount).toLocaleString()} LTP</p>
+                  </div>
 
-                {/* 授权状态检查 */}
-                <div className={`rounded p-3 ${
-                  nftApprovals[selectedTicket.tokenId] 
-                    ? 'bg-green-50 border border-green-200' 
-                    : 'bg-yellow-50 border border-yellow-200'
-                }`}>
-                  <div className="flex items-center">
-                    {nftApprovals[selectedTicket.tokenId] ? (
-                      <>
-                        <svg className="w-4 h-4 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                        <span className="text-sm text-green-700">
-                          NFT is authorized and ready for sale
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
-                        <span className="text-sm text-yellow-700">
-                          Please authorize NFT before listing
-                        </span>
-                      </>
-                    )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Purchased Date
+                    </label>
+                    <p>{new Date(selectedTicket.purchaseTime * 1000).toLocaleString()}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Status
+                    </label>
+                    <span className={`px-2 py-1 rounded text-sm font-medium ${getStatusColor(selectedTicket.status)}`}>
+                      {getStatusText(selectedTicket.status)}
+                    </span>
+                  </div>
+
+                  {compareStatus(selectedTicket.status, TicketStatus.Ready) && (
+                    <button
+                      onClick={() => setViewMode('sell')}
+                      className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded font-medium transition-colors mt-4"
+                    >
+                      Sell This Ticket
+                    </button>
+                  )}
+
+                  <button
+                    onClick={handleCloseModal}
+                    className="w-full bg-gray-500 hover:bg-gray-600 text-white py-2 rounded font-medium transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              ) : (
+                // 售卖模式
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Lottery
+                    </label>
+                    <p className="font-medium">{selectedTicket.lotteryName}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Option
+                    </label>
+                    <p className="font-medium">{selectedTicket.optionName}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Original Value
+                    </label>
+                    <p className="font-medium">{parseFloat(selectedTicket.amount).toLocaleString()} LTP</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Selling Price (LTP)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      value={sellPrice}
+                      onChange={(e) => setSellPrice(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter selling price"
+                    />
+                    <p className="text-sm text-gray-500 mt-1">
+                      Set the price you want to sell this ticket for
+                    </p>
+                  </div>
+
+                  {/* 授权状态检查 - 只在Ready状态显示 */}
+                  {compareStatus(selectedTicket.status, TicketStatus.Ready) && (
+                    <div className={`rounded p-3 ${
+                      nftApprovals[selectedTicket.tokenId] 
+                        ? 'bg-green-50 border border-green-200' 
+                        : 'bg-yellow-50 border border-yellow-200'
+                    }`}>
+                      <div className="flex items-center">
+                        {nftApprovals[selectedTicket.tokenId] ? (
+                          <>
+                            <svg className="w-4 h-4 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            <span className="text-sm text-green-700">
+                              NFT is authorized and ready for sale
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                            <span className="text-sm text-yellow-700">
+                              Please authorize NFT before listing
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() => setViewMode('details')}
+                      className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 rounded font-medium transition-colors"
+                    >
+                      Back to Details
+                    </button>
+                    <button
+                      onClick={() => handleListTicket(selectedTicket.tokenId, sellPrice)}
+                      disabled={
+                        !sellPrice || 
+                        parseFloat(sellPrice) <= 0 || 
+                        listing === selectedTicket.tokenId || 
+                        (compareStatus(selectedTicket.status, TicketStatus.Ready) && !nftApprovals[selectedTicket.tokenId])
+                      }
+                      className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white py-2 rounded font-medium transition-colors"
+                    >
+                      {listing === selectedTicket.tokenId ? 'Listing...' : 'List for Sale'}
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => {
-                      setSelectedTicket(null);
-                      setSellPrice('');
-                    }}
-                    className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 rounded font-medium transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => handleListTicket(selectedTicket.tokenId, sellPrice)}
-                    disabled={!sellPrice || parseFloat(sellPrice) <= 0 || listing === selectedTicket.tokenId || !nftApprovals[selectedTicket.tokenId]}
-                    className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white py-2 rounded font-medium transition-colors"
-                  >
-                    {listing === selectedTicket.tokenId ? 'Listing...' : 'List for Sale'}
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
