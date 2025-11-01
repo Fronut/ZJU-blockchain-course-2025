@@ -24,9 +24,16 @@ export const usePoints = () => {
   const [contractError, setContractError] = useState<string>('');
 
   // 验证合约地址格式
+  // 改进合约地址验证
   const validateContractAddress = (address: string): string => {
     try {
-      return ethers.getAddress(address); // 这会自动修复校验和
+      if (!address || address === '0x0000000000000000000000000000000000000000') {
+        throw new Error('Contract address is zero address');
+      }
+      if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+        throw new Error('Invalid contract address format');
+      }
+      return ethers.getAddress(address);
     } catch (error) {
       console.error('Invalid contract address:', address);
       throw new Error(`Invalid contract address: ${address}`);
