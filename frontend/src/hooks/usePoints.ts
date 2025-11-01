@@ -92,14 +92,41 @@ export const usePoints = () => {
     try {
       setLoading(true);
       setContractError('');
-      const tx = await lotteryContract.claimPoints();
-      await tx.wait();
+      
+      console.log('Claiming points...');
+      
+      // 使用更高的 gas limit 并直接发送交易
+      const tx = await lotteryContract.claimPoints({
+        gasLimit: 200000 // 增加 gas limit
+      });
+      
+      console.log('Claim transaction sent:', tx.hash);
+      const receipt = await tx.wait();
+      console.log('Transaction confirmed:', receipt);
+      
+      // 等待一会儿让状态更新
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // 刷新数据
       await fetchPointsBalance();
       await checkClaimStatus();
-    } catch (error) {
+      
+      console.log('Points claimed successfully');
+      } catch (error: any) {
       console.error('Failed to claim points:', error);
-      setContractError('Failed to claim points. Make sure you have enough gas and contracts are deployed.');
-      throw error;
+      
+      let errorMessage = 'Failed to claim points';
+      
+      if (error.reason) {
+        errorMessage = error.reason;
+      } else if (error.message.includes('already claimed')) {
+        errorMessage = 'You have already claimed your points';
+      } else if (error.code === 'CALL_EXCEPTION') {
+        errorMessage = 'Claim failed. You may have already claimed points.';
+      }
+      
+      setContractError(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }

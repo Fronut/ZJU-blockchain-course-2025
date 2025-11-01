@@ -1,18 +1,26 @@
 // src/components/points/ClaimPoints.tsx
 import React, { useState } from 'react';
 import { usePoints } from '../../hooks/usePoints';
-
 export const ClaimPoints: React.FC = () => {
-  const { hasClaimed, claimPoints, loading } = usePoints();
+  const { hasClaimed, claimPoints, loading, refreshPoints } = usePoints();
   const [error, setError] = useState<string>('');
 
   const handleClaim = async () => {
     try {
       setError('');
       await claimPoints();
+      // 手动刷新状态
+      setTimeout(() => {
+        refreshPoints();
+      }, 1000);
     } catch (err: any) {
       setError(err.message || 'Failed to claim points');
     }
+  };
+
+  const handleRetry = () => {
+    setError('');
+    refreshPoints();
   };
 
   if (hasClaimed) {
@@ -32,7 +40,13 @@ export const ClaimPoints: React.FC = () => {
       
       {error && (
         <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
-          <p className="text-red-800 text-sm">{error}</p>
+          <p className="text-red-800 text-sm mb-2">{error}</p>
+          <button
+            onClick={handleRetry}
+            className="text-red-600 hover:text-red-800 text-sm underline"
+          >
+            Check Status Again
+          </button>
         </div>
       )}
       
