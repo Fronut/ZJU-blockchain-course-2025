@@ -448,14 +448,19 @@ contract DecentralizedLottery is Ownable, ReentrancyGuard {
         uint256 indexed lotteryId
     );
 
-    constructor() Ownable(msg.sender) {
-        // 部署彩票积分合约
-        lotteryPoints = new LotteryPoints();
+    constructor(address pointsAddress, address tokenAddress) Ownable(msg.sender) {
+        require(pointsAddress != address(0), "Invalid points address");
+        require(tokenAddress != address(0), "Invalid token address");
         
-        // 部署彩票Token合约
-        lotteryToken = new LotteryToken();
+        lotteryPoints = LotteryPoints(pointsAddress);
+        lotteryToken = LotteryToken(tokenAddress);
         
-        // 转移所有权到主合约
+        // 移除构造函数中的所有权转移
+        // 改为在部署后单独调用
+    }
+    // 在 DecentralizedLottery 合约中添加
+    function initialize() external onlyOwner {
+        // 转移代币合约所有权
         lotteryToken.transferOwnership(address(this));
     }
 
