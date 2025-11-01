@@ -86,8 +86,8 @@ export const usePoints = () => {
   }, [getPointsContract, account]);
 
   const claimPoints = async () => {
-    const lotteryContract = getLotteryContract();
-    if (!lotteryContract) throw new Error('Wallet not connected or contract address invalid');
+    const pointsContract = getPointsContract();
+    if (!pointsContract) throw new Error('Wallet not connected or contract address invalid');
     
     try {
       setLoading(true);
@@ -95,8 +95,8 @@ export const usePoints = () => {
       
       console.log('Claiming points...');
       
-      // 使用更高的 gas limit 并直接发送交易
-      const tx = await lotteryContract.claimPoints({
+      // 直接调用LotteryPoints合约的claimPoints函数
+      const tx = await pointsContract.claimPoints({
         gasLimit: 200000 // 增加 gas limit
       });
       

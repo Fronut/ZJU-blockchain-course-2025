@@ -32,13 +32,20 @@ contract LotteryPoints is ERC20, Ownable {
      * @dev 用户领取测试积分
      */
     function claimPoints() external {
-        require(!hasClaimed[msg.sender], "Already claimed");
+        claimPointsFor(msg.sender);
+    }
+
+    /**
+     * @dev 为指定地址领取测试积分（支持代理调用）
+     */
+    function claimPointsFor(address user) public {
+        require(!hasClaimed[user], "Already claimed");
         require(totalSupply() + CLAIM_AMOUNT <= MAX_SUPPLY, "Max supply exceeded");
         
-        hasClaimed[msg.sender] = true;
-        _mint(msg.sender, CLAIM_AMOUNT);
+        hasClaimed[user] = true;
+        _mint(user, CLAIM_AMOUNT);
         
-        emit PointsClaimed(msg.sender, CLAIM_AMOUNT);
+        emit PointsClaimed(user, CLAIM_AMOUNT);
     }
 
     /**
@@ -801,7 +808,7 @@ contract DecentralizedLottery is Ownable, ReentrancyGuard {
      * @dev 用户领取测试积分
      */
     function claimPoints() external {
-        lotteryPoints.claimPoints();
+        lotteryPoints.claimPointsFor(msg.sender);
     }
 
     /**
