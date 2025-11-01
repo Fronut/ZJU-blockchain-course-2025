@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ethers } from 'ethers';
 import { Lottery, Ticket, Listing, OrderBookLevel } from '../types';
-import { CONTRACT_ADDRESSES } from '../utils/constants';
+import { CONTRACT_ADDRESSES, TICKET_STATUS_MAP } from '../utils/constants';
 import { useWeb3 } from './useWeb3';
 
 // 完整的 Lottery 合约 ABI
@@ -96,19 +96,19 @@ export const useLottery = () => {
         const endTime = Number(lottery.endTime);
         const currentTime = Math.floor(Date.now() / 1000);
         const timeRemaining = endTime - currentTime;
-        const status = Number(lottery.status); // 转换为 number
-        const isActive = status === 0 && timeRemaining > 0; // 现在使用 number 比较
+        const status = Number(lottery.status);
+        const isActive = status === 0 && timeRemaining > 0;
         
         console.log(`Lottery ${index}:`, {
           id: Number(lottery.id),
           name: lottery.name,
-          status: status, // 现在是 number
-          statusRaw: lottery.status, // 原始 BigInt
+          status: status,
+          statusRaw: lottery.status,
           endTime: endTime,
           currentTime: currentTime,
           timeRemaining: timeRemaining,
           timeRemainingDays: timeRemaining / (60 * 60 * 24),
-          isActive: isActive, // 现在应该为 true
+          isActive: isActive,
           totalPool: ethers.formatEther(lottery.totalPool),
           ticketPrice: ethers.formatEther(lottery.ticketPrice)
         });
@@ -120,7 +120,7 @@ export const useLottery = () => {
           options: lottery.options,
           totalPool: ethers.formatEther(lottery.totalPool),
           endTime: endTime,
-          status: status, // 存储为 number
+          status: status,
           winningOption: Number(lottery.winningOption),
           ticketPrice: ethers.formatEther(lottery.ticketPrice),
           optionCounts: lottery.optionCounts.map((count: bigint) => Number(count)),
@@ -147,28 +147,57 @@ export const useLottery = () => {
     
     try {
       console.log('Fetching tickets for account:', debouncedAccount);
-      const ticketsData = await lotteryContract.getUserTickets(debouncedAccount);
-      console.log('Raw tickets data received:', ticketsData);
       
-      if (!ticketsData || ticketsData.length === 0) {
-        console.log('No tickets found for account - this is normal if no purchases made');
-        setMyTickets([]);
-        return;
+      // 获取用户当前拥有的票券
+      const ticketsData = await lotteryContract.getUserTickets(debouncedAccount);
+      console.log('Raw tickets data (owned):', ticketsData);
+      
+      // 获取活跃挂单
+      const listingsData = await lotteryContract.getActiveListings();
+      console.log('Raw listings data:', listingsData);
+      
+      const allTickets: Ticket[] = [];
+      
+      // 处理用户当前拥有的票券
+      if (ticketsData && ticketsData.length > 0) {
+        const ownedTickets: Ticket[] = ticketsData.map((ticket: any) => ({
+          tokenId: Number(ticket.tokenId),
+          lotteryId: Number(ticket.lotteryId),
+          lotteryName: ticket.lotteryName,
+          optionId: Number(ticket.optionId),
+          optionName: ticket.optionName,
+          amount: ethers.formatEther(ticket.amount),
+          purchaseTime: Number(ticket.purchaseTime),
+          status: Number(ticket.status)
+        }));
+        allTickets.push(...ownedTickets);
       }
       
-      const formattedTickets: Ticket[] = ticketsData.map((ticket: any) => ({
-        tokenId: Number(ticket.tokenId),
-        lotteryId: Number(ticket.lotteryId),
-        lotteryName: ticket.lotteryName,
-        optionId: Number(ticket.optionId),
-        optionName: ticket.optionName,
-        amount: ethers.formatEther(ticket.amount),
-        purchaseTime: Number(ticket.purchaseTime),
-        status: Number(ticket.status)
-      }));
+      // 处理用户挂单中的票券（这些票券当前在合约地址，但属于用户的挂单）
+      if (listingsData && listingsData.length > 0) {
+        const userListings = listingsData.filter((listing: any) => 
+          listing.seller.toLowerCase() === debouncedAccount.toLowerCase()
+        );
+        
+        console.log('User listings:', userListings);
+        
+        const listedTickets: Ticket[] = userListings.map((listing: any) => ({
+          tokenId: Number(listing.tokenId),
+          lotteryId: Number(listing.lotteryId),
+          lotteryName: listing.lotteryName,
+          optionId: Number(listing.optionId),
+          optionName: listing.optionName,
+          amount: ethers.formatEther(listing.ticketAmount),
+          purchaseTime: Number(listing.listingTime), // 使用挂单时间作为参考
+          status: 1 // OnSale 状态
+        }));
+        
+        allTickets.push(...listedTickets);
+      }
       
-      console.log('Formatted tickets:', formattedTickets);
-      setMyTickets(formattedTickets);
+      console.log('Combined tickets:', allTickets);
+      setMyTickets(allTickets);
+      
     } catch (error) {
       console.error('Failed to fetch tickets:', error);
       setMyTickets([]);
@@ -188,7 +217,7 @@ export const useLottery = () => {
       console.log('Raw listings data received:', listingsData);
       
       if (!listingsData || listingsData.length === 0) {
-        console.log('No active listings found - this is normal if no tickets listed for sale');
+        console.log('No active listings found');
         setActiveListings([]);
         return;
       }
@@ -293,14 +322,14 @@ export const useLottery = () => {
     }
   };
 
-  // 购买彩票 - 修复版本
+  // 购买彩票
   const purchaseTicket = async (lotteryId: number, optionId: number) => {
     if (!lotteryContract || !signer || !account) throw new Error('Wallet not connected');
     
     try {
       console.log('Purchasing ticket:', { lotteryId, optionId });
       
-      // === 新增：自动检查并授权 LTP ===
+      // 自动检查并授权 LTP
       const pointsContract = new ethers.Contract(CONTRACT_ADDRESSES.points, [
         "function allowance(address, address) view returns (uint256)",
         "function approve(address, uint256) returns (bool)"
@@ -320,13 +349,12 @@ export const useLottery = () => {
         console.log('Insufficient allowance, auto-approving LTP...');
         const approveTx = await pointsContract.approve(
           CONTRACT_ADDRESSES.lottery, 
-          ethers.parseEther("10000") // 授权足够大的金额
+          ethers.parseEther("10000")
         );
         console.log('Approval transaction sent:', approveTx.hash);
         await approveTx.wait();
         console.log('Auto-approval completed');
       }
-      // === 自动授权结束 ===
       
       const tx = await lotteryContract.purchaseTicket(lotteryId, optionId, {
         gasLimit: 500000
@@ -335,7 +363,7 @@ export const useLottery = () => {
       const receipt = await tx.wait();
       console.log('Purchase transaction confirmed');
       
-      // === 新增：自动授权 NFT ===
+      // 自动授权 NFT
       try {
         const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.token, [
           "function approve(address, uint256) returns (bool)"
@@ -352,27 +380,25 @@ export const useLottery = () => {
         }
       } catch (authError) {
         console.warn('NFT auto-authorization failed:', authError);
-        // 不阻止购买流程继续
       }
-      // === 授权结束 ===
       
       // 刷新数据
       await fetchMyTickets();
-      await fetchAllLotteries(); // 刷新彩票数据
+      await fetchAllLotteries();
     } catch (error) {
       console.error('Failed to purchase ticket:', error);
       throw error;
     }
   };
 
-  // 挂单出售彩票 - 改进版本
+  // 挂单出售彩票
   const listTicket = async (tokenId: number, price: string) => {
     if (!lotteryContract || !signer) throw new Error('Wallet not connected');
     
     try {
       console.log('Listing ticket:', { tokenId, price });
       
-      // === 新增：检查 NFT 授权状态 ===
+      // 检查 NFT 授权状态
       const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.token, [
         "function getApproved(uint256) view returns (address)",
         "function isApprovedForAll(address, address) view returns (bool)"
@@ -390,26 +416,27 @@ export const useLottery = () => {
       if (approvedAddress.toLowerCase() !== CONTRACT_ADDRESSES.lottery.toLowerCase() && !isApprovedForAll) {
         throw new Error('NFT not authorized. Please authorize the NFT first.');
       }
-      // === 授权检查结束 ===
       
       const tx = await lotteryContract.listTicket(tokenId, ethers.parseEther(price), {
         gasLimit: 800000
       });
       console.log('List transaction sent:', tx.hash);
-      const receipt = await tx.wait();
+      await tx.wait();
       console.log('List transaction confirmed');
       
-      // 等待区块确认
+      // 等待状态更新
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // 强制刷新所有数据
-      await fetchMyTickets();
-      await fetchActiveListings();
-      await fetchAllLotteries(); // 也刷新彩票数据
+      // 刷新所有数据
+      await Promise.all([
+        fetchMyTickets(),
+        fetchActiveListings(),
+        fetchAllLotteries()
+      ]);
+      
     } catch (error: any) {
       console.error('Failed to list ticket:', error);
       
-      // === 改进错误信息 ===
       let errorMessage = 'Failed to list ticket';
       if (error.reason?.includes('Not ticket owner')) {
         errorMessage = 'You are not the owner of this ticket';
