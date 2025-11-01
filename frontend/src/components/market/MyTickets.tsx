@@ -43,12 +43,6 @@ export const MyTickets: React.FC = () => {
       const isApproved = approvedAddress.toLowerCase() === CONTRACT_ADDRESSES.lottery.toLowerCase() || isApprovedForAll;
       
       setNftApprovals(prev => ({ ...prev, [tokenId]: isApproved }));
-      console.log(`NFT ${tokenId} approval status:`, { 
-        approvedAddress, 
-        lotteryAddress: CONTRACT_ADDRESSES.lottery,
-        isApprovedForAll,
-        isApproved 
-      });
       return isApproved;
     } catch (error) {
       console.error('Failed to check NFT approval:', error);
@@ -59,7 +53,6 @@ export const MyTickets: React.FC = () => {
   // 在组件加载时检查所有票券的授权状态
   useEffect(() => {
     if (myTickets.length > 0 && account) {
-      console.log('Checking NFT approvals for tickets:', myTickets);
       myTickets.forEach(ticket => {
         if (compareStatus(ticket.status, TicketStatus.Ready)) {
           checkNFTApproval(ticket.tokenId);
@@ -88,23 +81,15 @@ export const MyTickets: React.FC = () => {
       
       // 检查当前授权状态
       const currentApproval = await tokenContract.getApproved(tokenId);
-      console.log('Current approval for token', tokenId, ':', currentApproval);
       
       if (currentApproval.toLowerCase() === CONTRACT_ADDRESSES.lottery.toLowerCase()) {
-        console.log('NFT already authorized');
         setNftApprovals(prev => ({ ...prev, [tokenId]: true }));
         return;
       }
       
       // 执行授权
       const tx = await tokenContract.approve(CONTRACT_ADDRESSES.lottery, tokenId);
-      console.log('Authorization transaction sent:', tx.hash);
       await tx.wait();
-      console.log('NFT authorized successfully');
-      
-      // 验证授权
-      const newApproval = await tokenContract.getApproved(tokenId);
-      console.log('New approval:', newApproval);
       
       setNftApprovals(prev => ({ ...prev, [tokenId]: true }));
       
@@ -127,32 +112,6 @@ export const MyTickets: React.FC = () => {
     if (status === 'all') return myTickets.length;
     return myTickets.filter(ticket => compareStatus(ticket.status, status)).length;
   };
-
-  // 调试信息
-  useEffect(() => {
-    console.log('=== MyTickets Debug Info ===');
-    console.log('All tickets:', myTickets);
-    console.log('Filter:', filter, TICKET_STATUS_MAP[filter as keyof typeof TICKET_STATUS_MAP]);
-    console.log('Filtered tickets:', filteredTickets);
-    console.log('Ticket status breakdown:', myTickets.map(t => ({ 
-      id: t.tokenId, 
-      status: t.status, 
-      statusType: typeof t.status,
-      statusValue: Number(t.status),
-      statusText: TICKET_STATUS_MAP[Number(t.status) as keyof typeof TICKET_STATUS_MAP],
-      lottery: t.lotteryName,
-      option: t.optionName
-    })));
-    console.log('Status counts:', {
-      all: getStatusCount('all'),
-      ready: getStatusCount(TicketStatus.Ready),
-      onSale: getStatusCount(TicketStatus.OnSale),
-      winning: getStatusCount(TicketStatus.Winning),
-      losing: getStatusCount(TicketStatus.Losing)
-    });
-    console.log('NFT Approvals:', nftApprovals);
-    console.log('============================');
-  }, [myTickets, filter, filteredTickets, nftApprovals]);
 
   const handleListTicket = async (tokenId: number, price: string) => {
     try {
