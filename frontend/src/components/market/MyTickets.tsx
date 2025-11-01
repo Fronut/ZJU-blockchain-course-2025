@@ -4,13 +4,61 @@ import { useLottery } from '../../hooks/useLottery';
 import { Ticket, TicketStatus } from '../../types';
 import { TICKET_STATUS_MAP } from '../../utils/constants';
 import { Loading } from '../common/Loading';
+import { ethers } from 'ethers';
+import { CONTRACT_ADDRESSES } from '../../utils/constants';
 
 export const MyTickets: React.FC = () => {
   const { myTickets, listTicket, loading } = useLottery();
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [sellPrice, setSellPrice] = useState('');
   const [listing, setListing] = useState<number | null>(null);
+  const [authorizing, setAuthorizing] = useState<number | null>(null);
   const [filter, setFilter] = useState<TicketStatus | 'all'>('all');
+
+  // === 新增：NFT 授权函数 ===
+  const authorizeNFT = async (tokenId: number) => {
+    try {
+      setAuthorizing(tokenId);
+      const { ethereum } = window as any;
+      
+      if (!ethereum) {
+        throw new Error('MetaMask not installed');
+      }
+      
+      const provider = new ethers.BrowserProvider(ethereum);
+      const signer = await provider.getSigner();
+      
+      const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.token, [
+        "function approve(address, uint256) returns (bool)",
+        "function getApproved(uint256) view returns (address)"
+      ], signer);
+      
+      // 检查当前授权状态
+      const currentApproval = await tokenContract.getApproved(tokenId);
+      console.log('Current approval for token', tokenId, ':', currentApproval);
+      
+      if (currentApproval.toLowerCase() === CONTRACT_ADDRESSES.lottery.toLowerCase()) {
+        console.log('NFT already authorized');
+        return;
+      }
+      
+      // 执行授权
+      const tx = await tokenContract.approve(CONTRACT_ADDRESSES.lottery, tokenId);
+      console.log('Authorization transaction sent:', tx.hash);
+      await tx.wait();
+      console.log('NFT authorized successfully');
+      
+      // 验证授权
+      const newApproval = await tokenContract.getApproved(tokenId);
+      console.log('New approval:', newApproval);
+      
+    } catch (error: any) {
+      console.error('Failed to authorize NFT:', error);
+      throw new Error(error.reason || 'Failed to authorize NFT');
+    } finally {
+      setAuthorizing(null);
+    }
+  };
 
   const filteredTickets = myTickets.filter(ticket => {
     if (filter === 'all') return true;
@@ -53,6 +101,28 @@ export const MyTickets: React.FC = () => {
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-900">My Tickets</h2>
         <p className="text-gray-600 mt-2">Manage your lottery ticket collection</p>
+        
+        {/* === 新增：授权说明 === */}
+        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800">
+                NFT Authorization Required
+              </h3>
+              <div className="mt-2 text-sm text-blue-700">
+                <p>
+                  To sell your tickets on the market, you need to authorize the contract to transfer your NFT.
+                  Click "Authorize NFT" before listing for sale.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Filter Tabs */}
@@ -127,23 +197,52 @@ export const MyTickets: React.FC = () => {
                 </div>
 
                 {ticket.status === TicketStatus.Ready && (
-                  <button
-                    onClick={() => setSelectedTicket(ticket)}
-                    className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded font-medium transition-colors"
-                  >
-                    Sell Ticket
-                  </button>
+                  <div className="space-y-2">
+                    {/* === 新增：授权按钮 === */}
+                    <button
+                      onClick={() => authorizeNFT(ticket.tokenId)}
+                      disabled={authorizing === ticket.tokenId}
+                      className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-purple-300 text-white py-2 rounded font-medium transition-colors flex items-center justify-center"
+                    >
+                      {authorizing === ticket.tokenId ? (
+                        <Loading size="sm" text="" />
+                      ) : (
+                        'Authorize NFT'
+                      )}
+                    </button>
+                    
+                    <button
+                      onClick={() => setSelectedTicket(ticket)}
+                      className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded font-medium transition-colors"
+                    >
+                      Sell Ticket
+                    </button>
+                  </div>
                 )}
 
                 {ticket.status === TicketStatus.OnSale && (
                   <div className="text-center">
                     <p className="text-sm text-gray-600">Currently listed for sale</p>
+                    <button
+                      onClick={() => setSelectedTicket(ticket)}
+                      className="mt-2 text-blue-500 hover:text-blue-600 text-sm"
+                    >
+                      View Details
+                    </button>
                   </div>
                 )}
 
                 {ticket.status === TicketStatus.Winning && (
                   <div className="text-center">
                     <p className="text-sm text-green-600 font-semibold">🎉 Winning Ticket!</p>
+                    <p className="text-xs text-gray-600 mt-1">Congratulations!</p>
+                  </div>
+                )}
+
+                {ticket.status === TicketStatus.Losing && (
+                  <div className="text-center">
+                    <p className="text-sm text-red-600">Losing Ticket</p>
+                    <p className="text-xs text-gray-600 mt-1">Better luck next time!</p>
                   </div>
                 )}
               </div>
@@ -208,6 +307,18 @@ export const MyTickets: React.FC = () => {
                   <p className="text-sm text-gray-500 mt-1">
                     Set the price you want to sell this ticket for
                   </p>
+                </div>
+
+                {/* === 新增：授权状态检查 === */}
+                <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                  <div className="flex items-center">
+                    <svg className="w-4 h-4 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-sm text-yellow-700">
+                      Make sure you've authorized this NFT before listing
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex gap-3 pt-4">
