@@ -456,16 +456,54 @@ export const useLottery = () => {
 
   // 购买挂单
   const buyListing = async (listingId: number) => {
-    if (!lotteryContract) throw new Error('Wallet not connected');
+    if (!lotteryContract || !signer || !account) throw new Error('Wallet not connected');
     
     try {
       console.log('Buying listing:', { listingId });
+      
+      // 先获取挂单信息来知道要购买哪个tokenId
+      const activeListings = await lotteryContract.getActiveListings();
+      const targetListing = activeListings.find((listing: any) => 
+        Number(listing.listingId) === listingId
+      );
+      
+      if (!targetListing) {
+        throw new Error('Listing not found');
+      }
+      
+      const tokenId = Number(targetListing.tokenId);
+      console.log('Buying tokenId:', tokenId);
+      
       const tx = await lotteryContract.buyListing(listingId, {
         gasLimit: 800000
       });
       console.log('Buy listing transaction sent:', tx.hash);
-      await tx.wait();
+      const receipt = await tx.wait();
       console.log('Buy listing transaction confirmed');
+      
+      // === 改进：授权刚购买的NFT ===
+      try {
+        const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.token, [
+          "function approve(address, uint256) returns (bool)",
+          "function getApproved(uint256) view returns (address)"
+        ], signer);
+        
+        // 检查当前授权状态
+        const currentApproval = await tokenContract.getApproved(tokenId);
+        console.log('Current approval for purchased NFT:', currentApproval);
+        
+        if (currentApproval.toLowerCase() !== CONTRACT_ADDRESSES.lottery.toLowerCase()) {
+          const approveTx = await tokenContract.approve(CONTRACT_ADDRESSES.lottery, tokenId);
+          await approveTx.wait();
+          console.log('✅ Purchased NFT auto-authorized for listing');
+        } else {
+          console.log('Purchased NFT already authorized');
+        }
+      } catch (authError) {
+        console.warn('Purchased NFT auto-authorization failed:', authError);
+        // 不阻止购买流程继续
+      }
+      // === 授权结束 ===
       
       // 刷新数据
       await fetchMyTickets();

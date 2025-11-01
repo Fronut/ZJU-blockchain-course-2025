@@ -14,7 +14,7 @@ const compareStatus = (status1: any, status2: TicketStatus): boolean => {
 };
 
 export const MyTickets: React.FC = () => {
-  const { myTickets, listTicket, loading } = useLottery();
+  const { myTickets, listTicket, loading, refreshData } = useLottery();
   const { account, isConnected } = useWeb3();
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [sellPrice, setSellPrice] = useState('');
@@ -22,7 +22,7 @@ export const MyTickets: React.FC = () => {
   const [authorizing, setAuthorizing] = useState<number | null>(null);
   const [filter, setFilter] = useState<TicketStatus | 'all'>('all');
   const [nftApprovals, setNftApprovals] = useState<{[key: number]: boolean}>({});
-  const [viewMode, setViewMode] = useState<'details' | 'sell'>('details'); // 新增：区分查看和售卖模式
+  const [viewMode, setViewMode] = useState<'details' | 'sell'>('details');
 
   // 检查NFT授权状态
   const checkNFTApproval = async (tokenId: number) => {
@@ -55,9 +55,8 @@ export const MyTickets: React.FC = () => {
   useEffect(() => {
     if (myTickets.length > 0 && account) {
       myTickets.forEach(ticket => {
-        if (compareStatus(ticket.status, TicketStatus.Ready)) {
-          checkNFTApproval(ticket.tokenId);
-        }
+        // 检查所有票券的授权状态，不仅仅是Ready状态
+        checkNFTApproval(ticket.tokenId);
       });
     }
   }, [myTickets, account]);
@@ -120,7 +119,7 @@ export const MyTickets: React.FC = () => {
       await listTicket(tokenId, price);
       setSelectedTicket(null);
       setSellPrice('');
-      setViewMode('details'); // 重置为详情模式
+      setViewMode('details');
     } catch (error) {
       console.error('Failed to list ticket:', error);
     } finally {
@@ -146,21 +145,21 @@ export const MyTickets: React.FC = () => {
   // 处理查看票券详情
   const handleViewDetails = (ticket: Ticket) => {
     setSelectedTicket(ticket);
-    setViewMode('details'); // 设置为详情模式
+    setViewMode('details');
   };
 
   // 处理开始售卖
   const handleStartSelling = (ticket: Ticket) => {
     setSelectedTicket(ticket);
-    setViewMode('sell'); // 设置为售卖模式
-    setSellPrice(''); // 重置售卖价格
+    setViewMode('sell');
+    setSellPrice('');
   };
 
   // 关闭模态框
   const handleCloseModal = () => {
     setSelectedTicket(null);
     setSellPrice('');
-    setViewMode('details'); // 重置为详情模式
+    setViewMode('details');
   };
 
   if (loading) {
@@ -174,8 +173,18 @@ export const MyTickets: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900">My Tickets</h2>
-        <p className="text-gray-600 mt-2">Manage your lottery ticket collection</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900">My Tickets</h2>
+            <p className="text-gray-600 mt-2">Manage your lottery ticket collection</p>
+          </div>
+          <button
+            onClick={refreshData}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+          >
+            Refresh Data
+          </button>
+        </div>
         
         {/* 授权说明 - 只在有Ready票券且未授权时显示 */}
         {myTickets.some(ticket => 
@@ -195,8 +204,8 @@ export const MyTickets: React.FC = () => {
                 </h3>
                 <div className="mt-2 text-sm text-blue-700">
                   <p>
-                    To sell your tickets on the market, you need to authorize the contract to transfer your NFT.
-                    Click "Authorize NFT" before listing for sale.
+                    Some of your tickets need authorization to be sold on the market.
+                    Click "Authorize NFT" for each ticket you want to sell.
                   </p>
                 </div>
               </div>
