@@ -20,21 +20,34 @@ export const useWeb3 = () => {
 
   const connectWallet = useCallback(async () => {
     if (!window.ethereum) {
-      alert('Please install MetaMask!');
-      return;
+      throw new Error('MetaMask not installed');
     }
 
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
+      
+      // 检查当前网络
+      const network = await provider.getNetwork();
+      const chainId = Number(network.chainId);
+      
+      // 如果不是 Ganache 网络，提示用户手动切换
+      if (chainId !== 1337) {
+        throw new Error('Please switch to Ganache network (Chain ID: 1337) in MetaMask');
+      }
+      
+      // 请求账户访问
       await window.ethereum.request({ method: 'eth_requestAccounts' });
       
       const accounts = await provider.listAccounts();
-      const network = await provider.getNetwork();
       const signer = await provider.getSigner();
+
+      if (accounts.length === 0) {
+        throw new Error('No accounts found');
+      }
 
       setWeb3State({
         account: accounts[0].address,
-        chainId: Number(network.chainId),
+        chainId: chainId,
         isConnected: true,
         provider,
         signer
@@ -59,6 +72,7 @@ export const useWeb3 = () => {
 
     } catch (error) {
       console.error('Failed to connect wallet:', error);
+      throw error;
     }
   }, []);
 
@@ -73,10 +87,17 @@ export const useWeb3 = () => {
   }, []);
 
   useEffect(() => {
-    // 检查是否已经连接
-    if (window.ethereum?.selectedAddress) {
-      connectWallet();
-    }
+    const checkConnection = async () => {
+      if (window.ethereum?.selectedAddress) {
+        try {
+          await connectWallet();
+        } catch (error) {
+          console.error('Auto-connect failed:', error);
+        }
+      }
+    };
+
+    checkConnection();
   }, [connectWallet]);
 
   return {

@@ -30,5 +30,9 @@ export default {
       }
     },
   },
+  corePlugins: {
+    // 禁用 text-size-adjust 插件来消除警告
+    textSizeAdjust: false,
+  },
   plugins: [],
 }

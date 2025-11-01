@@ -2,7 +2,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
+html,
+:host {
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%; /* 保持 Safari 兼容 */
+}
 /* Custom styles */
 @layer base {
   html {

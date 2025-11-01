@@ -1,12 +1,12 @@
 // src/utils/constants.ts
 export const CONTRACT_ADDRESSES = {
-  lottery: "0xC59c02F115E9EF8c49F7B9E10647599AF0e789c4",
-  points: "0x472fC09ABB3A0490e7b9D1e7A781Cd97EC1AA586",
-  token: "0xAFb3AD4A50412AC2430BC1dB561Ef776C0df6CDb"
+  lottery: "0xE378695CBE289A58EB0BeE457CFA61b3defcE891",
+  points: "0x436C0f624d107A3d8C6224d023eE44337727EF3F", 
+  token: "0x0DB17C02ACDECA3D4E072fD0379Da385C0bc52b6"
 };
 
 export const SUPPORTED_CHAINS = {
-  1337: "Ganache",
+  1337: "Ganache Local",
   31337: "Hardhat Network"
 };
 
