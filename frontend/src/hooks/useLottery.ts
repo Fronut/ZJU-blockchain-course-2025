@@ -164,7 +164,7 @@ export const useLottery = () => {
         optionName: ticket.optionName,
         amount: ethers.formatEther(ticket.amount),
         purchaseTime: Number(ticket.purchaseTime),
-        status: ticket.status
+        status: Number(ticket.status)
       }));
       
       console.log('Formatted tickets:', formattedTickets);

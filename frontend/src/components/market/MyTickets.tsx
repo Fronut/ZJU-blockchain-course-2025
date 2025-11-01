@@ -1,21 +1,74 @@
 // src/components/market/MyTickets.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLottery } from '../../hooks/useLottery';
 import { Ticket, TicketStatus } from '../../types';
 import { TICKET_STATUS_MAP } from '../../utils/constants';
 import { Loading } from '../common/Loading';
 import { ethers } from 'ethers';
 import { CONTRACT_ADDRESSES } from '../../utils/constants';
+import { useWeb3 } from '../../hooks/useWeb3';
+
+// 辅助函数：安全地比较状态（处理 BigInt）
+const compareStatus = (status1: any, status2: TicketStatus): boolean => {
+  return Number(status1) === Number(status2);
+};
 
 export const MyTickets: React.FC = () => {
   const { myTickets, listTicket, loading } = useLottery();
+  const { account, isConnected } = useWeb3();
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [sellPrice, setSellPrice] = useState('');
   const [listing, setListing] = useState<number | null>(null);
   const [authorizing, setAuthorizing] = useState<number | null>(null);
   const [filter, setFilter] = useState<TicketStatus | 'all'>('all');
+  const [nftApprovals, setNftApprovals] = useState<{[key: number]: boolean}>({});
 
-  // === 新增：NFT 授权函数 ===
+  // 检查NFT授权状态
+  const checkNFTApproval = async (tokenId: number) => {
+    try {
+      const { ethereum } = window as any;
+      if (!ethereum || !account) return false;
+      
+      const provider = new ethers.BrowserProvider(ethereum);
+      const signer = await provider.getSigner();
+      
+      const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.token, [
+        "function getApproved(uint256) view returns (address)",
+        "function isApprovedForAll(address, address) view returns (bool)"
+      ], signer);
+      
+      const approvedAddress = await tokenContract.getApproved(tokenId);
+      const isApprovedForAll = await tokenContract.isApprovedForAll(account, CONTRACT_ADDRESSES.lottery);
+      
+      const isApproved = approvedAddress.toLowerCase() === CONTRACT_ADDRESSES.lottery.toLowerCase() || isApprovedForAll;
+      
+      setNftApprovals(prev => ({ ...prev, [tokenId]: isApproved }));
+      console.log(`NFT ${tokenId} approval status:`, { 
+        approvedAddress, 
+        lotteryAddress: CONTRACT_ADDRESSES.lottery,
+        isApprovedForAll,
+        isApproved 
+      });
+      return isApproved;
+    } catch (error) {
+      console.error('Failed to check NFT approval:', error);
+      return false;
+    }
+  };
+
+  // 在组件加载时检查所有票券的授权状态
+  useEffect(() => {
+    if (myTickets.length > 0 && account) {
+      console.log('Checking NFT approvals for tickets:', myTickets);
+      myTickets.forEach(ticket => {
+        if (compareStatus(ticket.status, TicketStatus.Ready)) {
+          checkNFTApproval(ticket.tokenId);
+        }
+      });
+    }
+  }, [myTickets, account]);
+
+  // === NFT 授权函数 ===
   const authorizeNFT = async (tokenId: number) => {
     try {
       setAuthorizing(tokenId);
@@ -39,6 +92,7 @@ export const MyTickets: React.FC = () => {
       
       if (currentApproval.toLowerCase() === CONTRACT_ADDRESSES.lottery.toLowerCase()) {
         console.log('NFT already authorized');
+        setNftApprovals(prev => ({ ...prev, [tokenId]: true }));
         return;
       }
       
@@ -52,6 +106,8 @@ export const MyTickets: React.FC = () => {
       const newApproval = await tokenContract.getApproved(tokenId);
       console.log('New approval:', newApproval);
       
+      setNftApprovals(prev => ({ ...prev, [tokenId]: true }));
+      
     } catch (error: any) {
       console.error('Failed to authorize NFT:', error);
       throw new Error(error.reason || 'Failed to authorize NFT');
@@ -60,10 +116,43 @@ export const MyTickets: React.FC = () => {
     }
   };
 
+  // 修复过滤逻辑 - 使用安全的比较函数
   const filteredTickets = myTickets.filter(ticket => {
     if (filter === 'all') return true;
-    return ticket.status === filter;
+    return compareStatus(ticket.status, filter);
   });
+
+  // 计算各状态的数量 - 使用安全的比较函数
+  const getStatusCount = (status: TicketStatus | 'all') => {
+    if (status === 'all') return myTickets.length;
+    return myTickets.filter(ticket => compareStatus(ticket.status, status)).length;
+  };
+
+  // 调试信息
+  useEffect(() => {
+    console.log('=== MyTickets Debug Info ===');
+    console.log('All tickets:', myTickets);
+    console.log('Filter:', filter, TICKET_STATUS_MAP[filter as keyof typeof TICKET_STATUS_MAP]);
+    console.log('Filtered tickets:', filteredTickets);
+    console.log('Ticket status breakdown:', myTickets.map(t => ({ 
+      id: t.tokenId, 
+      status: t.status, 
+      statusType: typeof t.status,
+      statusValue: Number(t.status),
+      statusText: TICKET_STATUS_MAP[Number(t.status) as keyof typeof TICKET_STATUS_MAP],
+      lottery: t.lotteryName,
+      option: t.optionName
+    })));
+    console.log('Status counts:', {
+      all: getStatusCount('all'),
+      ready: getStatusCount(TicketStatus.Ready),
+      onSale: getStatusCount(TicketStatus.OnSale),
+      winning: getStatusCount(TicketStatus.Winning),
+      losing: getStatusCount(TicketStatus.Losing)
+    });
+    console.log('NFT Approvals:', nftApprovals);
+    console.log('============================');
+  }, [myTickets, filter, filteredTickets, nftApprovals]);
 
   const handleListTicket = async (tokenId: number, price: string) => {
     try {
@@ -78,14 +167,19 @@ export const MyTickets: React.FC = () => {
     }
   };
 
-  const getStatusColor = (status: TicketStatus) => {
-    switch (status) {
+  const getStatusColor = (status: any) => {
+    const statusNum = Number(status);
+    switch (statusNum) {
       case TicketStatus.Ready: return 'bg-green-100 text-green-800';
       case TicketStatus.OnSale: return 'bg-blue-100 text-blue-800';
       case TicketStatus.Winning: return 'bg-yellow-100 text-yellow-800';
       case TicketStatus.Losing: return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const getStatusText = (status: any) => {
+    return TICKET_STATUS_MAP[Number(status) as keyof typeof TICKET_STATUS_MAP];
   };
 
   if (loading) {
@@ -102,27 +196,32 @@ export const MyTickets: React.FC = () => {
         <h2 className="text-3xl font-bold text-gray-900">My Tickets</h2>
         <p className="text-gray-600 mt-2">Manage your lottery ticket collection</p>
         
-        {/* === 新增：授权说明 === */}
-        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-blue-800">
-                NFT Authorization Required
-              </h3>
-              <div className="mt-2 text-sm text-blue-700">
-                <p>
-                  To sell your tickets on the market, you need to authorize the contract to transfer your NFT.
-                  Click "Authorize NFT" before listing for sale.
-                </p>
+        {/* 授权说明 - 只在有Ready票券且未授权时显示 */}
+        {myTickets.some(ticket => 
+          compareStatus(ticket.status, TicketStatus.Ready) && 
+          !nftApprovals[ticket.tokenId]
+        ) && (
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-blue-800">
+                  NFT Authorization Required
+                </h3>
+                <div className="mt-2 text-sm text-blue-700">
+                  <p>
+                    To sell your tickets on the market, you need to authorize the contract to transfer your NFT.
+                    Click "Authorize NFT" before listing for sale.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Filter Tabs */}
@@ -135,21 +234,24 @@ export const MyTickets: React.FC = () => {
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }`}
         >
-          All Tickets ({myTickets.length})
+          All Tickets ({getStatusCount('all')})
         </button>
-        {Object.entries(TICKET_STATUS_MAP).map(([status, label]) => (
-          <button
-            key={status}
-            onClick={() => setFilter(Number(status) as TicketStatus)}
-            className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-              filter === Number(status)
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            {label} ({myTickets.filter(t => t.status === Number(status)).length})
-          </button>
-        ))}
+        {Object.entries(TICKET_STATUS_MAP).map(([status, label]) => {
+          const statusNum = Number(status) as TicketStatus;
+          return (
+            <button
+              key={status}
+              onClick={() => setFilter(statusNum)}
+              className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
+                compareStatus(filter, statusNum)
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              {label} ({getStatusCount(statusNum)})
+            </button>
+          );
+        })}
       </div>
 
       {filteredTickets.length === 0 ? (
@@ -177,7 +279,7 @@ export const MyTickets: React.FC = () => {
                     <p className="text-gray-600 text-sm">Option: {ticket.optionName}</p>
                   </div>
                   <span className={`px-2 py-1 rounded text-sm font-medium ${getStatusColor(ticket.status)}`}>
-                    {TICKET_STATUS_MAP[ticket.status as keyof typeof TICKET_STATUS_MAP]}
+                    {getStatusText(ticket.status)}
                   </span>
                 </div>
 
@@ -196,31 +298,47 @@ export const MyTickets: React.FC = () => {
                   </div>
                 </div>
 
-                {ticket.status === TicketStatus.Ready && (
+                {compareStatus(ticket.status, TicketStatus.Ready) && (
                   <div className="space-y-2">
-                    {/* === 新增：授权按钮 === */}
-                    <button
-                      onClick={() => authorizeNFT(ticket.tokenId)}
-                      disabled={authorizing === ticket.tokenId}
-                      className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-purple-300 text-white py-2 rounded font-medium transition-colors flex items-center justify-center"
-                    >
-                      {authorizing === ticket.tokenId ? (
-                        <Loading size="sm" text="" />
-                      ) : (
-                        'Authorize NFT'
-                      )}
-                    </button>
+                    {/* 只在未授权时显示授权按钮 */}
+                    {!nftApprovals[ticket.tokenId] && (
+                      <button
+                        onClick={() => authorizeNFT(ticket.tokenId)}
+                        disabled={authorizing === ticket.tokenId}
+                        className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-purple-300 text-white py-2 rounded font-medium transition-colors flex items-center justify-center"
+                      >
+                        {authorizing === ticket.tokenId ? (
+                          <Loading size="sm" text="" />
+                        ) : (
+                          'Authorize NFT'
+                        )}
+                      </button>
+                    )}
+                    
+                    {/* 授权状态提示 */}
+                    {nftApprovals[ticket.tokenId] ? (
+                      <div className="bg-green-50 border border-green-200 rounded p-2 text-center">
+                        <p className="text-green-700 text-sm">✓ NFT Authorized</p>
+                      </div>
+                    ) : (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded p-2">
+                        <p className="text-yellow-700 text-sm text-center">
+                          Authorize NFT to sell
+                        </p>
+                      </div>
+                    )}
                     
                     <button
                       onClick={() => setSelectedTicket(ticket)}
-                      className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded font-medium transition-colors"
+                      disabled={!nftApprovals[ticket.tokenId]}
+                      className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white py-2 rounded font-medium transition-colors"
                     >
                       Sell Ticket
                     </button>
                   </div>
                 )}
 
-                {ticket.status === TicketStatus.OnSale && (
+                {compareStatus(ticket.status, TicketStatus.OnSale) && (
                   <div className="text-center">
                     <p className="text-sm text-gray-600">Currently listed for sale</p>
                     <button
@@ -232,14 +350,14 @@ export const MyTickets: React.FC = () => {
                   </div>
                 )}
 
-                {ticket.status === TicketStatus.Winning && (
+                {compareStatus(ticket.status, TicketStatus.Winning) && (
                   <div className="text-center">
                     <p className="text-sm text-green-600 font-semibold">🎉 Winning Ticket!</p>
                     <p className="text-xs text-gray-600 mt-1">Congratulations!</p>
                   </div>
                 )}
 
-                {ticket.status === TicketStatus.Losing && (
+                {compareStatus(ticket.status, TicketStatus.Losing) && (
                   <div className="text-center">
                     <p className="text-sm text-red-600">Losing Ticket</p>
                     <p className="text-xs text-gray-600 mt-1">Better luck next time!</p>
@@ -309,15 +427,32 @@ export const MyTickets: React.FC = () => {
                   </p>
                 </div>
 
-                {/* === 新增：授权状态检查 === */}
-                <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                {/* 授权状态检查 */}
+                <div className={`rounded p-3 ${
+                  nftApprovals[selectedTicket.tokenId] 
+                    ? 'bg-green-50 border border-green-200' 
+                    : 'bg-yellow-50 border border-yellow-200'
+                }`}>
                   <div className="flex items-center">
-                    <svg className="w-4 h-4 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    <span className="text-sm text-yellow-700">
-                      Make sure you've authorized this NFT before listing
-                    </span>
+                    {nftApprovals[selectedTicket.tokenId] ? (
+                      <>
+                        <svg className="w-4 h-4 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        <span className="text-sm text-green-700">
+                          NFT is authorized and ready for sale
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        <span className="text-sm text-yellow-700">
+                          Please authorize NFT before listing
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -333,7 +468,7 @@ export const MyTickets: React.FC = () => {
                   </button>
                   <button
                     onClick={() => handleListTicket(selectedTicket.tokenId, sellPrice)}
-                    disabled={!sellPrice || parseFloat(sellPrice) <= 0 || listing === selectedTicket.tokenId}
+                    disabled={!sellPrice || parseFloat(sellPrice) <= 0 || listing === selectedTicket.tokenId || !nftApprovals[selectedTicket.tokenId]}
                     className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white py-2 rounded font-medium transition-colors"
                   >
                     {listing === selectedTicket.tokenId ? 'Listing...' : 'List for Sale'}
