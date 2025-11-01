@@ -25,7 +25,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
   const [approving, setApproving] = useState(false);
 
   // 正确的时间计算 - 确保使用秒为单位
-  const currentTime = Math.floor(Date.now() / 1000); // 当前时间戳（秒）
+  const currentTime = Math.floor(Date.now() / 1000);
   const timeRemaining = lottery.endTime - currentTime;
   const isActive = lottery.status === 0 && timeRemaining > 0;
   const totalTickets = lottery.optionCounts.reduce((sum, count) => sum + count, 0);
@@ -47,12 +47,6 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
       const allowance = await pointsContract.allowance(account, CONTRACT_ADDRESSES.lottery);
       const ticketPriceWei = ethers.parseEther(lottery.ticketPrice);
       
-      console.log('Approval check:', {
-        allowance: allowance.toString(),
-        ticketPriceWei: ticketPriceWei.toString(),
-        needsApproval: allowance < ticketPriceWei
-      });
-      
       setNeedsApproval(allowance < ticketPriceWei);
     } catch (error) {
       console.error('Failed to check approval:', error);
@@ -73,15 +67,11 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
         "function approve(address, uint256) returns (bool)"
       ], signer);
       
-      const approveAmount = ethers.parseEther("10000"); // 授权足够大的金额
-      console.log('Approving LTP:', approveAmount.toString());
-      
+      const approveAmount = ethers.parseEther("10000");
       const tx = await pointsContract.approve(CONTRACT_ADDRESSES.lottery, approveAmount);
-      console.log('Approval transaction sent:', tx.hash);
       await tx.wait();
       
       setNeedsApproval(false);
-      console.log('LTP approval successful');
     } catch (error: any) {
       console.error('Approval failed:', error);
       setError(error.message || 'Failed to approve LTP');
@@ -90,10 +80,27 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
     }
   };
 
+  // 选项选择处理函数
+  const handleOptionSelect = (index: number) => {
+    if (!isActive) return;
+    
+    // 如果点击已选中的选项，取消选择；否则选择新选项
+    if (selectedOption === index) {
+      setSelectedOption(null);
+    } else {
+      setSelectedOption(index);
+    }
+  };
+
   // 购买函数
   const handlePurchase = async () => {
-    if (selectedOption === null) {
+    if (selectedOption === null || selectedOption === undefined) {
       setError('Please select an option');
+      return;
+    }
+
+    if (selectedOption < 0 || selectedOption >= lottery.options.length) {
+      setError('Invalid option selected');
       return;
     }
 
@@ -113,7 +120,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
       await purchaseTicket(lottery.id, selectedOption);
       setSelectedOption(null);
       
-      // 购买后重新检查授权状态（可能变化）
+      // 购买后重新检查授权状态
       setTimeout(() => {
         checkApproval();
       }, 2000);
@@ -130,25 +137,21 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
     return (lottery.optionCounts[optionIndex] / totalTickets) * 100;
   };
 
+  // 购买按钮禁用条件
+  const isPurchaseDisabled = !isActive || 
+    selectedOption === null || 
+    selectedOption === undefined ||
+    selectedOption < 0 || 
+    selectedOption >= lottery.options.length ||
+    !hasEnoughPoints || 
+    loading;
+
   // 监听账户和彩票价格变化
   useEffect(() => {
     if (isConnected && account) {
       checkApproval();
     }
   }, [isConnected, account, lottery.ticketPrice]);
-
-  console.log('LotteryDetail debug:', {
-    lotteryId: lottery.id,
-    status: lottery.status,
-    endTime: lottery.endTime,
-    currentTime,
-    timeRemaining,
-    isActive,
-    totalTickets,
-    needsApproval,
-    pointsBalance,
-    ticketPrice: lottery.ticketPrice
-  });
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -221,7 +224,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
                         ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
                         : 'border-gray-200 hover:border-gray-300'
                     } ${!isActive ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    onClick={() => isActive && setSelectedOption(index)}
+                    onClick={() => handleOptionSelect(index)}
                   >
                     <div className="flex justify-between items-start mb-2">
                       <div className="font-medium">{option}</div>
@@ -247,6 +250,11 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
                         {getOptionPercentage(index).toFixed(1)}%
                       </div>
                     </div>
+                    {selectedOption === index && (
+                      <div className="mt-2 text-sm text-blue-600 font-medium">
+                        ✓ Selected
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -266,7 +274,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
                   </p>
                 </div>
               ) : needsApproval ? (
-                // === 新增：授权界面 ===
+                // 授权界面
                 <div className="space-y-4">
                   <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
                     <div className="flex items-center">
@@ -312,7 +320,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
                   )}
                 </div>
               ) : (
-                // === 原有的购买界面 ===
+                // 购买界面
                 <div className="space-y-4">
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <div className="flex justify-between text-sm mb-2">
@@ -347,6 +355,18 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
                     </div>
                   )}
 
+                  {/* 选择状态提示 */}
+                  {selectedOption === null && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <div className="flex items-center">
+                        <svg className="w-5 h-5 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        <span className="text-yellow-800">Please select an option to purchase a ticket</span>
+                      </div>
+                    </div>
+                  )}
+
                   {error && (
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                       <p className="text-red-800">{error}</p>
@@ -355,7 +375,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
 
                   <button
                     onClick={handlePurchase}
-                    disabled={!selectedOption || !hasEnoughPoints || !isActive || loading}
+                    disabled={isPurchaseDisabled}
                     className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white py-3 rounded-lg font-semibold transition-colors flex items-center justify-center"
                   >
                     {loading ? (
