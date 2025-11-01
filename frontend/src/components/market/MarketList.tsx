@@ -4,10 +4,12 @@ import { useLottery } from '../../hooks/useLottery';
 import { usePoints } from '../../hooks/usePoints';
 import { Listing } from '../../types';
 import { Loading } from '../common/Loading';
+import { useWeb3 } from '../../hooks/useWeb3';
 
 export const MarketList: React.FC = () => {
   const { activeListings, buyListing, loading } = useLottery();
   const { pointsBalance } = usePoints();
+  const { account } = useWeb3(); // 添加账户信息
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [purchasing, setPurchasing] = useState<number | null>(null);
 
@@ -24,6 +26,11 @@ export const MarketList: React.FC = () => {
 
   const canAfford = (price: string) => {
     return parseFloat(pointsBalance) >= parseFloat(price);
+  };
+
+  // 检查是否是用户自己的挂单
+  const isOwnListing = (listing: Listing) => {
+    return listing.seller.toLowerCase() === account?.toLowerCase();
   };
 
   if (loading) {
@@ -49,73 +56,92 @@ export const MarketList: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {activeListings.map(listing => (
-            <div
-              key={listing.listingId}
-              className="bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow"
-            >
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">{listing.lotteryName}</h3>
-                    <p className="text-gray-600 text-sm">Option: {listing.optionName}</p>
+          {activeListings.map(listing => {
+            const ownListing = isOwnListing(listing);
+            
+            return (
+              <div
+                key={listing.listingId}
+                className="bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow"
+              >
+                <div className="p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">{listing.lotteryName}</h3>
+                      <p className="text-gray-600 text-sm">Option: {listing.optionName}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm font-medium">
+                        For Sale
+                      </span>
+                      {ownListing && (
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">
+                          Your Listing
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm font-medium">
-                    For Sale
-                  </span>
-                </div>
 
-                <div className="space-y-3 mb-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Original Value:</span>
-                    <span className="font-medium">{parseFloat(listing.ticketAmount).toLocaleString()} LTP</span>
+                  <div className="space-y-3 mb-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Original Value:</span>
+                      <span className="font-medium">{parseFloat(listing.ticketAmount).toLocaleString()} LTP</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Asking Price:</span>
+                      <span className="font-semibold text-green-600">
+                        {parseFloat(listing.price).toLocaleString()} LTP
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Seller:</span>
+                      <span className="font-mono text-xs">
+                        {listing.seller.slice(0, 6)}...{listing.seller.slice(-4)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Listed:</span>
+                      <span>{new Date(listing.listingTime * 1000).toLocaleDateString()}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Asking Price:</span>
-                    <span className="font-semibold text-green-600">
-                      {parseFloat(listing.price).toLocaleString()} LTP
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Seller:</span>
-                    <span className="font-mono text-xs">
-                      {listing.seller.slice(0, 6)}...{listing.seller.slice(-4)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Listed:</span>
-                    <span>{new Date(listing.listingTime * 1000).toLocaleDateString()}</span>
-                  </div>
-                </div>
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedListing(listing)}
-                    className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 rounded font-medium transition-colors"
-                  >
-                    View Details
-                  </button>
-                  <button
-                    onClick={() => handleBuyListing(listing.listingId)}
-                    disabled={!canAfford(listing.price) || purchasing === listing.listingId}
-                    className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white py-2 rounded font-medium transition-colors flex items-center justify-center"
-                  >
-                    {purchasing === listing.listingId ? (
-                      <Loading size="sm" text="" />
-                    ) : (
-                      'Buy Now'
-                    )}
-                  </button>
-                </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSelectedListing(listing)}
+                      className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 rounded font-medium transition-colors"
+                    >
+                      View Details
+                    </button>
+                    <button
+                      onClick={() => handleBuyListing(listing.listingId)}
+                      disabled={!canAfford(listing.price) || purchasing === listing.listingId || ownListing}
+                      className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white py-2 rounded font-medium transition-colors flex items-center justify-center"
+                    >
+                      {purchasing === listing.listingId ? (
+                        <Loading size="sm" text="" />
+                      ) : ownListing ? (
+                        'Your Listing'
+                      ) : (
+                        'Buy Now'
+                      )}
+                    </button>
+                  </div>
 
-                {!canAfford(listing.price) && (
-                  <p className="text-red-600 text-xs mt-2 text-center">
-                    Need {parseFloat(listing.price)} LTP
-                  </p>
-                )}
+                  {!canAfford(listing.price) && !ownListing && (
+                    <p className="text-red-600 text-xs mt-2 text-center">
+                      Need {parseFloat(listing.price)} LTP
+                    </p>
+                  )}
+                  
+                  {ownListing && (
+                    <p className="text-blue-600 text-xs mt-2 text-center">
+                      This is your own listing
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -161,6 +187,14 @@ export const MarketList: React.FC = () => {
                   <label className="text-sm text-gray-500">Listed On</label>
                   <p>{new Date(selectedListing.listingTime * 1000).toLocaleString()}</p>
                 </div>
+                
+                {isOwnListing(selectedListing) && (
+                  <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                    <p className="text-blue-700 text-sm text-center">
+                      This is your own listing. You cannot buy it.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-3 mt-6">
@@ -172,13 +206,16 @@ export const MarketList: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    handleBuyListing(selectedListing.listingId);
-                    setSelectedListing(null);
+                    if (!isOwnListing(selectedListing)) {
+                      handleBuyListing(selectedListing.listingId);
+                      setSelectedListing(null);
+                    }
                   }}
-                  disabled={!canAfford(selectedListing.price) || purchasing === selectedListing.listingId}
+                  disabled={!canAfford(selectedListing.price) || purchasing === selectedListing.listingId || isOwnListing(selectedListing)}
                   className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white py-2 rounded font-medium transition-colors"
                 >
-                  {purchasing === selectedListing.listingId ? 'Buying...' : 'Buy Ticket'}
+                  {purchasing === selectedListing.listingId ? 'Buying...' : 
+                   isOwnListing(selectedListing) ? 'Your Listing' : 'Buy Ticket'}
                 </button>
               </div>
             </div>

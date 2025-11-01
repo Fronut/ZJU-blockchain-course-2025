@@ -396,12 +396,16 @@ export const useLottery = () => {
         gasLimit: 800000
       });
       console.log('List transaction sent:', tx.hash);
-      await tx.wait();
+      const receipt = await tx.wait();
       console.log('List transaction confirmed');
       
-      // 刷新数据
+      // 等待区块确认
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // 强制刷新所有数据
       await fetchMyTickets();
       await fetchActiveListings();
+      await fetchAllLotteries(); // 也刷新彩票数据
     } catch (error: any) {
       console.error('Failed to list ticket:', error);
       
