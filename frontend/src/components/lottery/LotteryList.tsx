@@ -14,8 +14,12 @@ export const LotteryList: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'active' | 'ended'>('all');
 
   const filteredLotteries = lotteries.filter(lottery => {
-    if (filter === 'active') return lottery.status === 0;
-    if (filter === 'ended') return lottery.status !== 0;
+    const currentTime = Math.floor(Date.now() / 1000);
+    const timeRemaining = lottery.endTime - currentTime;
+    const isActive = lottery.status === 0 && timeRemaining > 0;
+    
+    if (filter === 'active') return isActive;
+    if (filter === 'ended') return !isActive || lottery.status !== 0;
     return true;
   });
 

@@ -9,10 +9,19 @@ interface LotteryCardProps {
 }
 
 export const LotteryCard: React.FC<LotteryCardProps> = ({ lottery, onViewDetails }) => {
-  const timeRemaining = lottery.endTime * 1000 - Date.now();
-  const daysRemaining = Math.ceil(timeRemaining / (1000 * 60 * 60 * 24));
+  // 正确的时间计算
+  const currentTime = Math.floor(Date.now() / 1000);
+  const timeRemaining = lottery.endTime - currentTime;
+  const daysRemaining = Math.ceil(timeRemaining / (60 * 60 * 24));
+  const isActive = lottery.status === 0 && timeRemaining > 0;
   
   const totalTickets = lottery.optionCounts.reduce((sum, count) => sum + count, 0);
+
+  // 确定显示的状态
+  let displayStatus = LOTTERY_STATUS_MAP[lottery.status as keyof typeof LOTTERY_STATUS_MAP];
+  if (lottery.status === 0 && !isActive) {
+    displayStatus = 'Ended';
+  }
 
   return (
     <div className="bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow">
@@ -20,11 +29,12 @@ export const LotteryCard: React.FC<LotteryCardProps> = ({ lottery, onViewDetails
         <div className="flex justify-between items-start mb-4">
           <h3 className="text-xl font-semibold text-gray-900">{lottery.name}</h3>
           <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-            lottery.status === 0 ? 'bg-green-100 text-green-800' : 
-            lottery.status === 1 ? 'bg-blue-100 text-blue-800' : 
+            displayStatus === 'Active' ? 'bg-green-100 text-green-800' : 
+            displayStatus === 'Ended' ? 'bg-gray-100 text-gray-800' :
+            displayStatus === 'Drawn' ? 'bg-blue-100 text-blue-800' : 
             'bg-gray-100 text-gray-800'
           }`}>
-            {LOTTERY_STATUS_MAP[lottery.status as keyof typeof LOTTERY_STATUS_MAP]}
+            {displayStatus}
           </span>
         </div>
         

@@ -18,7 +18,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // 正确的时间计算
+  // 正确的时间计算 - 确保使用秒为单位
   const currentTime = Math.floor(Date.now() / 1000); // 当前时间戳（秒）
   const timeRemaining = lottery.endTime - currentTime;
   const isActive = lottery.status === 0 && timeRemaining > 0;
@@ -32,7 +32,8 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
     currentTime,
     timeRemaining,
     isActive,
-    totalTickets
+    totalTickets,
+    statusNumber: Number(lottery.status)
   });
 
   const handlePurchase = async () => {

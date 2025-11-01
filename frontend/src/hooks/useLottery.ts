@@ -72,7 +72,6 @@ export const useLottery = () => {
     }
   }, [signer]);
 
-  // 在 fetchAllLotteries 函数中添加调试
   const fetchAllLotteries = useCallback(async () => {
     if (!lotteryContract) {
       console.log('No contract instance available for fetching lotteries');
@@ -97,16 +96,19 @@ export const useLottery = () => {
         const endTime = Number(lottery.endTime);
         const currentTime = Math.floor(Date.now() / 1000);
         const timeRemaining = endTime - currentTime;
+        const status = Number(lottery.status); // 转换为 number
+        const isActive = status === 0 && timeRemaining > 0; // 现在使用 number 比较
         
         console.log(`Lottery ${index}:`, {
           id: Number(lottery.id),
           name: lottery.name,
-          status: lottery.status,
+          status: status, // 现在是 number
+          statusRaw: lottery.status, // 原始 BigInt
           endTime: endTime,
           currentTime: currentTime,
           timeRemaining: timeRemaining,
           timeRemainingDays: timeRemaining / (60 * 60 * 24),
-          isActive: timeRemaining > 0 && lottery.status === 0,
+          isActive: isActive, // 现在应该为 true
           totalPool: ethers.formatEther(lottery.totalPool),
           ticketPrice: ethers.formatEther(lottery.ticketPrice)
         });
@@ -118,7 +120,7 @@ export const useLottery = () => {
           options: lottery.options,
           totalPool: ethers.formatEther(lottery.totalPool),
           endTime: endTime,
-          status: lottery.status,
+          status: status, // 存储为 number
           winningOption: Number(lottery.winningOption),
           ticketPrice: ethers.formatEther(lottery.ticketPrice),
           optionCounts: lottery.optionCounts.map((count: bigint) => Number(count)),
