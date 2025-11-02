@@ -8,9 +8,17 @@ import { MyTicketsPage } from './pages/MyTicketsPage';
 import { PointsPage } from './pages/PointsPage';
 import { useWeb3 } from './hooks/useWeb3';
 import { NetworkStatus } from './components/common/NetworkStatus';
+import { useTimeCheck } from './hooks/useTimeCheck';
+import { TimeMismatchAlert } from './components/common/TimeMismatchAlert';
 
 const MainContent: React.FC = () => {
   const { isConnected } = useWeb3();
+  const { timeMismatch, checking } = useTimeCheck();
+
+  // 如果有时间不匹配，显示错误页面
+  if (timeMismatch && !checking) {
+    return <TimeMismatchAlert />;
+  }
 
   if (!isConnected) {
     return (

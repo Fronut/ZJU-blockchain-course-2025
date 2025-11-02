@@ -14,7 +14,7 @@ const compareStatus = (status1: any, status2: TicketStatus): boolean => {
 };
 
 export const MyTickets: React.FC = () => {
-  const { myTickets, listTicket, loading, refreshData } = useLottery();
+  const { myTickets, listTicket, loading, refreshData, lotteries } = useLottery();
   const { account, isConnected } = useWeb3();
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [sellPrice, setSellPrice] = useState('');
@@ -101,6 +101,34 @@ export const MyTickets: React.FC = () => {
     }
   };
 
+  // 修复：挂单函数中添加时间检查
+  const handleListTicket = async (tokenId: number, price: string) => {
+    try {
+      // 修复：检查对应彩票是否仍然活跃
+      const lottery = lotteries.find(l => l.id === selectedTicket?.lotteryId);
+      if (lottery) {
+        const currentTime = Math.floor(Date.now() / 1000);
+        const timeRemaining = lottery.endTime - currentTime;
+        const isActuallyActive = lottery.status === 0 && timeRemaining > 0;
+        
+        if (!isActuallyActive) {
+          throw new Error('Cannot list ticket: The associated lottery is no longer active');
+        }
+      }
+      
+      setListing(tokenId);
+      await listTicket(tokenId, price);
+      setSelectedTicket(null);
+      setSellPrice('');
+      setViewMode('details');
+    } catch (error: any) {
+      console.error('Failed to list ticket:', error);
+      alert(error.message || 'Failed to list ticket');
+    } finally {
+      setListing(null);
+    }
+  };
+
   // 修复过滤逻辑 - 使用安全的比较函数
   const filteredTickets = myTickets.filter(ticket => {
     if (filter === 'all') return true;
@@ -111,20 +139,6 @@ export const MyTickets: React.FC = () => {
   const getStatusCount = (status: TicketStatus | 'all') => {
     if (status === 'all') return myTickets.length;
     return myTickets.filter(ticket => compareStatus(ticket.status, status)).length;
-  };
-
-  const handleListTicket = async (tokenId: number, price: string) => {
-    try {
-      setListing(tokenId);
-      await listTicket(tokenId, price);
-      setSelectedTicket(null);
-      setSellPrice('');
-      setViewMode('details');
-    } catch (error) {
-      console.error('Failed to list ticket:', error);
-    } finally {
-      setListing(null);
-    }
   };
 
   const getStatusColor = (status: any) => {

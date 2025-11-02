@@ -24,10 +24,11 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
   const [needsApproval, setNeedsApproval] = useState(false);
   const [approving, setApproving] = useState(false);
 
-  // 正确的时间计算 - 确保使用秒为单位
+  // 修复：正确的活跃状态判断
   const currentTime = Math.floor(Date.now() / 1000);
   const timeRemaining = lottery.endTime - currentTime;
-  const isActive = lottery.status === 0 && timeRemaining > 0;
+  const isActuallyActive = lottery.status === 0 && timeRemaining > 0;
+  const isExpiredButNotProcessed = lottery.status === 0 && timeRemaining <= 0;
   const totalTickets = lottery.optionCounts.reduce((sum, count) => sum + count, 0);
   const hasEnoughPoints = parseFloat(pointsBalance) >= parseFloat(lottery.ticketPrice);
 
@@ -82,7 +83,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
 
   // 选项选择处理函数
   const handleOptionSelect = (index: number) => {
-    if (!isActive) return;
+    if (!isActuallyActive) return;
     
     // 如果点击已选中的选项，取消选择；否则选择新选项
     if (selectedOption === index) {
@@ -109,7 +110,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
       return;
     }
 
-    if (!isActive) {
+    if (!isActuallyActive) {
       setError('This lottery is no longer active');
       return;
     }
@@ -137,8 +138,8 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
     return (lottery.optionCounts[optionIndex] / totalTickets) * 100;
   };
 
-  // 购买按钮禁用条件
-  const isPurchaseDisabled = !isActive || 
+  // 修复：购买按钮禁用条件
+  const isPurchaseDisabled = !isActuallyActive || 
     selectedOption === null || 
     selectedOption === undefined ||
     selectedOption < 0 || 
@@ -174,7 +175,7 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
               <div className="text-blue-100 text-sm">Status</div>
               <div className="text-xl font-semibold">
                 {LOTTERY_STATUS_MAP[lottery.status as keyof typeof LOTTERY_STATUS_MAP]}
-                {!isActive && lottery.status === 0 && ' (Ended)'}
+                {isExpiredButNotProcessed && ' (Ended)'}
               </div>
             </div>
           </div>
@@ -220,10 +221,10 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
                   <div
                     key={index}
                     className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                      selectedOption === index && isActive
+                      selectedOption === index && isActuallyActive
                         ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
                         : 'border-gray-200 hover:border-gray-300'
-                    } ${!isActive ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    } ${!isActuallyActive ? 'opacity-60 cursor-not-allowed' : ''}`}
                     onClick={() => handleOptionSelect(index)}
                   >
                     <div className="flex justify-between items-start mb-2">
@@ -264,14 +265,31 @@ export const LotteryDetail: React.FC<LotteryDetailProps> = ({ lottery, onBack })
             <div>
               <h3 className="text-xl font-semibold mb-4">Purchase Ticket</h3>
               
-              {!isActive ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-yellow-800">
-                    {lottery.status !== 0 
-                      ? `This lottery has been ${LOTTERY_STATUS_MAP[lottery.status as keyof typeof LOTTERY_STATUS_MAP].toLowerCase()}.` 
-                      : 'This lottery has ended.'
-                    }
-                  </p>
+              {/* 修复：非活跃状态提示 */}
+              {!isActuallyActive && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center">
+                    <svg className="w-5 h-5 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <div>
+                      <h4 className="text-yellow-800 font-semibold">
+                        {isExpiredButNotProcessed ? 'Lottery Ended - Pending Results' : 'Lottery Not Active'}
+                      </h4>
+                      <p className="text-yellow-700 text-sm">
+                        {isExpiredButNotProcessed 
+                          ? 'This lottery has ended and is waiting for results. Tickets can no longer be purchased.'
+                          : 'Tickets are not available for purchase at this time.'
+                        }
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!isActuallyActive ? (
+                <div className="bg-gray-100 rounded-lg p-6 text-center">
+                  <p className="text-gray-600">Ticket purchasing is not available for this lottery.</p>
                 </div>
               ) : needsApproval ? (
                 // 授权界面

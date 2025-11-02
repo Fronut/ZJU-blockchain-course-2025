@@ -13,28 +13,32 @@ export const LotteryCard: React.FC<LotteryCardProps> = ({ lottery, onViewDetails
   const currentTime = Math.floor(Date.now() / 1000);
   const timeRemaining = lottery.endTime - currentTime;
   const daysRemaining = Math.ceil(timeRemaining / (60 * 60 * 24));
-  const isActive = lottery.status === 0 && timeRemaining > 0;
   
-  const totalTickets = lottery.optionCounts.reduce((sum, count) => sum + count, 0);
+  // 修复：处理负数的剩余时间
+  const displayTimeRemaining = timeRemaining > 0 ? 
+    `${daysRemaining} days` : 
+    'Ended';
+  
+  // 修复：基于合约状态和时间的正确状态判断
+  const getDisplayStatus = () => {
+    if (lottery.status === 1) return { text: 'Drawn', color: 'bg-blue-100 text-blue-800' };
+    if (lottery.status === 2) return { text: 'Refunded', color: 'bg-red-100 text-red-800' };
+    
+    // 状态为0时，根据时间判断
+    if (timeRemaining > 0) return { text: 'Active', color: 'bg-green-100 text-green-800' };
+    return { text: 'Ended (Pending)', color: 'bg-yellow-100 text-yellow-800' };
+  };
 
-  // 确定显示的状态
-  let displayStatus = LOTTERY_STATUS_MAP[lottery.status as keyof typeof LOTTERY_STATUS_MAP];
-  if (lottery.status === 0 && !isActive) {
-    displayStatus = 'Ended';
-  }
+  const statusInfo = getDisplayStatus();
+  const totalTickets = lottery.optionCounts.reduce((sum, count) => sum + count, 0);
 
   return (
     <div className="bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow">
       <div className="p-6">
         <div className="flex justify-between items-start mb-4">
           <h3 className="text-xl font-semibold text-gray-900">{lottery.name}</h3>
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-            displayStatus === 'Active' ? 'bg-green-100 text-green-800' : 
-            displayStatus === 'Ended' ? 'bg-gray-100 text-gray-800' :
-            displayStatus === 'Drawn' ? 'bg-blue-100 text-blue-800' : 
-            'bg-gray-100 text-gray-800'
-          }`}>
-            {displayStatus}
+          <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusInfo.color}`}>
+            {statusInfo.text}
           </span>
         </div>
         
@@ -59,8 +63,10 @@ export const LotteryCard: React.FC<LotteryCardProps> = ({ lottery, onViewDetails
           </div>
           <div>
             <div className="text-sm text-gray-500">Time Remaining</div>
-            <div className="text-lg font-semibold">
-              {timeRemaining > 0 ? `${daysRemaining} days` : 'Ended'}
+            <div className={`text-lg font-semibold ${
+              timeRemaining <= 0 ? 'text-red-600' : 'text-gray-900'
+            }`}>
+              {displayTimeRemaining}
             </div>
           </div>
         </div>
