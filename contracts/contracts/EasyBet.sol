@@ -674,8 +674,8 @@ contract DecentralizedLottery is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev 结束彩票项目并公布结果
-     */
+    * @dev 结束彩票项目并公布结果 - 修复版本
+    */
     function endLottery(uint256 lotteryId, uint256 winningOption) external onlyOwner {
         require(lotteryId < lotteries.length, "Lottery does not exist");
         Lottery storage lottery = lotteries[lotteryId];
@@ -685,6 +685,7 @@ contract DecentralizedLottery is Ownable, ReentrancyGuard {
         // 取消所有相关挂单
         _cancelAllListings(lotteryId);
 
+        // 正确更新状态
         lottery.status = LotteryStatus.Drawn;
         lottery.winningOption = winningOption;
         lottery.winningTickets = lottery.optionTickets[winningOption];
@@ -693,13 +694,18 @@ contract DecentralizedLottery is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev 结算并分配奖金
-     */
+    * @dev 结算并分配奖金 - 修复版本
+    */
     function settleLottery(uint256 lotteryId) external onlyOwner nonReentrant {
         require(lotteryId < lotteries.length, "Lottery does not exist");
         Lottery storage lottery = lotteries[lotteryId];
         require(lottery.status == LotteryStatus.Drawn, "Lottery not drawn");
-        require(lottery.winningTickets.length > 0, "No winning tickets");
+        
+        // 处理空彩票情况
+        if (lottery.winningTickets.length == 0) {
+            emit PrizeDistributed(lotteryId, 0, 0);
+            return;
+        }
 
         uint256 winnerCount = lottery.winningTickets.length;
         uint256 totalWinningAmount = lottery.optionTotalAmount[lottery.winningOption];
@@ -719,7 +725,8 @@ contract DecentralizedLottery is Ownable, ReentrancyGuard {
             lotteryToken.updateTicketStatus(tokenId, LotteryToken.TicketStatus.Winning);
         }
 
-        lottery.status = LotteryStatus.Active; // 重置状态，实际应改为已完成
+        // 重要：不要重置状态，保持 Drawn 状态
+        // lottery.status = LotteryStatus.Active; // 删除这行
 
         emit PrizeDistributed(lotteryId, totalPrize, winnerCount);
     }
