@@ -6,20 +6,27 @@ import { Loading } from '../common/Loading';
 import { CreateLottery } from './CreateLottery';
 import { LotteryDetail } from './LotteryDetail';
 import { Lottery } from '../../types';
+import { OwnerPanel } from './OwnerPanel';
+import { useWeb3 } from '../../hooks/useWeb3';
 
 export const LotteryList: React.FC = () => {
   const { lotteries, loading, error, refreshData } = useLottery();
+  const { account } = useWeb3();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedLottery, setSelectedLottery] = useState<Lottery | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'ended'>('all');
 
+  // 检查当前用户是否是合约所有者（这里需要根据实际部署设置）
+  // 在实际应用中，你应该从合约中检查所有者地址
+  const isOwner = true; // 临时设置为true用于测试
+
   const filteredLotteries = lotteries.filter(lottery => {
     const currentTime = Math.floor(Date.now() / 1000);
     const timeRemaining = lottery.endTime - currentTime;
-    const isActive = lottery.status === 0 && timeRemaining > 0;
+    const isActuallyActive = lottery.status === 0 && timeRemaining > 0;
     
-    if (filter === 'active') return isActive;
-    if (filter === 'ended') return !isActive || lottery.status !== 0;
+    if (filter === 'active') return isActuallyActive;
+    if (filter === 'ended') return !isActuallyActive || lottery.status !== 0;
     return true;
   });
 
@@ -46,17 +53,26 @@ export const LotteryList: React.FC = () => {
           >
             Refresh
           </button>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-          >
-            Create Lottery
-          </button>
+          {isOwner && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+            >
+              Create Lottery
+            </button>
+          )}
         </div>
       </div>
 
       {showCreateForm && (
         <CreateLottery onClose={() => setShowCreateForm(false)} />
+      )}
+
+      {/* 公证人面板 */}
+      {isOwner && (
+        <div className="mb-8">
+          <OwnerPanel lotteries={lotteries} onActionComplete={refreshData} />
+        </div>
       )}
 
       {/* 显示错误信息 */}

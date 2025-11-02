@@ -553,6 +553,73 @@ export const useLottery = () => {
     }
   }, [fetchAllLotteries, fetchMyTickets, fetchActiveListings]);
 
+  // 公证人函数 - 结束彩票
+  const endLottery = async (lotteryId: number, winningOption: number) => {
+    if (!lotteryContract) throw new Error('Wallet not connected');
+    
+    try {
+      console.log('Ending lottery:', { lotteryId, winningOption });
+      const tx = await lotteryContract.endLottery(lotteryId, winningOption, {
+        gasLimit: 500000
+      });
+      console.log('End lottery transaction sent:', tx.hash);
+      await tx.wait();
+      console.log('End lottery transaction confirmed');
+      
+      // 刷新数据
+      await fetchAllLotteries();
+      await fetchMyTickets();
+    } catch (error) {
+      console.error('Failed to end lottery:', error);
+      throw error;
+    }
+  };
+
+  // 公证人函数 - 结算彩票
+  const settleLottery = async (lotteryId: number) => {
+    if (!lotteryContract) throw new Error('Wallet not connected');
+    
+    try {
+      console.log('Settling lottery:', { lotteryId });
+      const tx = await lotteryContract.settleLottery(lotteryId, {
+        gasLimit: 500000
+      });
+      console.log('Settle lottery transaction sent:', tx.hash);
+      await tx.wait();
+      console.log('Settle lottery transaction confirmed');
+      
+      // 刷新数据
+      await fetchAllLotteries();
+      await fetchMyTickets();
+    } catch (error) {
+      console.error('Failed to settle lottery:', error);
+      throw error;
+    }
+  };
+
+  // 公证人函数 - 退款彩票
+  const refundLottery = async (lotteryId: number) => {
+    if (!lotteryContract) throw new Error('Wallet not connected');
+    
+    try {
+      console.log('Refunding lottery:', { lotteryId });
+      const tx = await lotteryContract.refundLottery(lotteryId, {
+        gasLimit: 500000
+      });
+      console.log('Refund lottery transaction sent:', tx.hash);
+      await tx.wait();
+      console.log('Refund lottery transaction confirmed');
+      
+      // 刷新数据
+      await fetchAllLotteries();
+      await fetchMyTickets();
+    } catch (error) {
+      console.error('Failed to refund lottery:', error);
+      throw error;
+    }
+  };
+
+  // 在返回对象中添加这些函数
   return {
     lotteries,
     myTickets,
@@ -564,6 +631,10 @@ export const useLottery = () => {
     listTicket,
     buyListing,
     buyAtBestPrice,
-    refreshData
+    refreshData,
+    // 添加公证人函数
+    endLottery,
+    settleLottery,
+    refundLottery
   };
 };
